@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Generated build, test and package artifacts
+dist/
+coverage/
+*.zip
+*.crx
+*.log
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.local
+config.local.*
+!config.local.example.*
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# TypeScript incremental build metadata
+*.tsbuildinfo

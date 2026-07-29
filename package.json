@@ -1,0 +1,34 @@
+{
+  "name": "bookmark-sync",
+  "version": "0.1.0",
+  "private": true,
+  "description": "书签同步器 —— 通过 WebDAV / S3 在多设备间同步浏览器书签",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "node scripts/build.mjs",
+    "build:watch": "node scripts/build.mjs --watch",
+    "zip": "npm run build && node scripts/zip.mjs",
+    "size": "npm run zip && node scripts/check-size.mjs",
+    "icons": "node scripts/gen-icons.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run size"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.0.268",
+    "@vitest/coverage-v8": "2.1.8",
+    "esbuild": "0.24.2",
+    "eslint": "9.17.0",
+    "fast-check": "3.23.2",
+    "typescript": "5.7.2",
+    "typescript-eslint": "8.19.0",
+    "vitest": "2.1.8"
+  }
+}

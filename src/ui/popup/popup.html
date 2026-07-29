@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title data-i18n="extName">书签同步</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <span class="brand" data-i18n="extName"></span>
+      <button id="btn-options" class="icon" data-i18n-attr="title:openOptions" aria-label="设置">⚙</button>
+    </header>
+
+    <section class="status" aria-live="polite">
+      <div class="row"><span id="last-sync" class="muted"></span></div>
+      <div class="row"><span id="counts" class="muted"></span></div>
+      <div class="row"><span id="state-line"></span></div>
+      <div id="progress-wrap" class="progress" hidden>
+        <div id="progress-bar" class="progress-fill"></div>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button id="btn-sync" class="primary" data-i18n="actionSync"></button>
+      <div class="pair">
+        <button id="btn-upload" data-i18n="actionUpload"></button>
+        <button id="btn-download" data-i18n="actionDownload"></button>
+      </div>
+      <button id="btn-cancel" class="ghost" data-i18n="actionCancel" hidden></button>
+    </section>
+
+    <!-- 覆盖层确认弹窗（需求 9.2，不用 window.confirm） -->
+    <div id="confirm" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="dialog">
+        <h2 id="confirm-title"></h2>
+        <p id="confirm-body"></p>
+        <ul id="confirm-list" class="items"></ul>
+        <p id="confirm-more" class="muted" hidden></p>
+        <div id="confirm-choices" class="choices" hidden></div>
+        <div class="dialog-actions">
+          <button id="confirm-cancel" class="ghost" data-i18n="actionCancel"></button>
+          <button id="confirm-ok" class="primary danger" data-i18n="actionConfirm"></button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,179 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title data-i18n="optionsTitle">书签同步器 设置</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1 data-i18n="optionsTitle"></h1>
+
+      <!-- 远端存储 -->
+      <section>
+        <h2 data-i18n="groupRemote"></h2>
+        <div class="field">
+          <label for="remoteKind" data-i18n="fieldRemoteKind"></label>
+          <select id="remoteKind">
+            <option value="webdav">WebDAV</option>
+            <option value="s3">S3</option>
+          </select>
+        </div>
+
+        <div id="pane-webdav" class="pane">
+          <div class="field">
+            <label for="webdavUrl" data-i18n="fieldWebdavUrl"></label>
+            <input id="webdavUrl" type="url" placeholder="https://dav.example.com/remote.php/dav/files/me" />
+          </div>
+          <div class="field">
+            <label for="webdavUser" data-i18n="fieldWebdavUser"></label>
+            <input id="webdavUser" type="text" autocomplete="username" />
+          </div>
+          <div class="field">
+            <label for="webdavPass" data-i18n="fieldWebdavPass"></label>
+            <input id="webdavPass" type="password" autocomplete="current-password" />
+          </div>
+          <div class="field">
+            <label for="webdavBase" data-i18n="fieldBasePath"></label>
+            <input id="webdavBase" type="text" placeholder="/bookmark-sync/" />
+          </div>
+        </div>
+
+        <div id="pane-s3" class="pane" hidden>
+          <div class="field">
+            <label for="s3Endpoint" data-i18n="fieldS3Endpoint"></label>
+            <input id="s3Endpoint" type="url" placeholder="https://s3.us-east-1.amazonaws.com" />
+          </div>
+          <div class="field">
+            <label for="s3Region" data-i18n="fieldS3Region"></label>
+            <input id="s3Region" type="text" placeholder="us-east-1" />
+          </div>
+          <div class="field">
+            <label for="s3Bucket" data-i18n="fieldS3Bucket"></label>
+            <input id="s3Bucket" type="text" />
+          </div>
+          <div class="field">
+            <label for="s3Key" data-i18n="fieldS3AccessKey"></label>
+            <input id="s3Key" type="text" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="s3Secret" data-i18n="fieldS3SecretKey"></label>
+            <input id="s3Secret" type="password" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="s3Prefix" data-i18n="fieldS3Prefix"></label>
+            <input id="s3Prefix" type="text" placeholder="bookmark-sync/" />
+          </div>
+          <div class="field checkbox">
+            <input id="s3PathStyle" type="checkbox" />
+            <label for="s3PathStyle" data-i18n="fieldS3PathStyle"></label>
+          </div>
+          <p class="hint" data-i18n="hintS3Verified"></p>
+        </div>
+
+        <div class="actions-row">
+          <button id="btn-test" data-i18n="actionTestConnection"></button>
+          <span id="test-result" class="muted" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <!-- 同步 -->
+      <section>
+        <h2 data-i18n="groupSync"></h2>
+        <div class="field checkbox">
+          <input id="scheduleEnabled" type="checkbox" />
+          <label for="scheduleEnabled" data-i18n="fieldScheduleEnabled"></label>
+        </div>
+        <div class="field">
+          <label for="scheduleMinutes" data-i18n="fieldScheduleMinutes"></label>
+          <input id="scheduleMinutes" type="number" min="1" max="1440" step="1" />
+        </div>
+        <div class="field checkbox">
+          <input id="syncOnStartup" type="checkbox" />
+          <label for="syncOnStartup" data-i18n="fieldSyncOnStartup"></label>
+        </div>
+        <div class="field">
+          <label for="guardCount" data-i18n="fieldGuardCount"></label>
+          <input id="guardCount" type="number" min="0" step="1" />
+        </div>
+        <div class="field">
+          <label for="guardRatio" data-i18n="fieldGuardRatio"></label>
+          <input id="guardRatio" type="number" min="0" max="100" step="1" />
+        </div>
+        <div class="field">
+          <label for="timeoutSec" data-i18n="fieldTimeout"></label>
+          <input id="timeoutSec" type="number" min="5" max="300" step="1" />
+        </div>
+        <div class="field">
+          <label for="maxRetries" data-i18n="fieldMaxRetries"></label>
+          <input id="maxRetries" type="number" min="0" max="10" step="1" />
+        </div>
+        <div class="field checkbox">
+          <input id="compress" type="checkbox" />
+          <label for="compress" data-i18n="fieldCompress"></label>
+        </div>
+        <p class="hint" data-i18n="hintOrderLocalWins"></p>
+      </section>
+
+      <!-- 历史版本 -->
+      <section>
+        <h2 data-i18n="groupHistory"></h2>
+        <div class="actions-row">
+          <button id="btn-history-refresh" data-i18n="actionRefreshIndex"></button>
+          <button id="btn-history-reload" data-i18n="actionReloadHistory"></button>
+          <span id="history-summary" class="muted" aria-live="polite"></span>
+        </div>
+        <table id="history-table">
+          <thead>
+            <tr>
+              <th data-i18n="colTime"></th>
+              <th data-i18n="colDevice"></th>
+              <th data-i18n="colBookmarks"></th>
+              <th data-i18n="colFolders"></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+      </section>
+
+      <!-- 设备 -->
+      <section>
+        <h2 data-i18n="groupDevice"></h2>
+        <div class="field">
+          <label for="deviceName" data-i18n="fieldDeviceName"></label>
+          <input id="deviceName" type="text" />
+        </div>
+      </section>
+
+      <!-- 维护 -->
+      <section>
+        <h2 data-i18n="groupMaintenance"></h2>
+        <div class="actions-row">
+          <button id="btn-export-log" data-i18n="actionExportLog"></button>
+          <button id="btn-reset-sync" class="danger" data-i18n="actionResetSync"></button>
+          <button id="btn-reset-all" class="danger" data-i18n="actionResetAll"></button>
+        </div>
+        <p class="hint" data-i18n="hintResetSync"></p>
+        <p class="hint" data-i18n="hintResetAll"></p>
+      </section>
+
+      <footer>
+        <span id="save-state" class="muted" aria-live="polite"></span>
+      </footer>
+    </main>
+
+    <div id="confirm" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="dialog">
+        <h2 id="confirm-title"></h2>
+        <p id="confirm-body"></p>
+        <div class="dialog-actions">
+          <button id="confirm-cancel" class="ghost" data-i18n="actionCancel"></button>
+          <button id="confirm-ok" class="danger" data-i18n="actionConfirm"></button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

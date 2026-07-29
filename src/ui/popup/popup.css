@@ -1,0 +1,228 @@
+/* popup 样式：原生 CSS，无框架（需求 12.1）。宽约 320px（需求 9.1）。 */
+
+:root {
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #656d76;
+  --line: #d8dee4;
+  --accent: #1f6feb;
+  --accent-fg: #ffffff;
+  --danger: #cf222e;
+  --ok: #1a7f37;
+  --btn: #f6f8fa;
+  --btn-hover: #eef1f4;
+  --focus: #0969da;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c2128;
+    --fg: #e6edf3;
+    --muted: #9198a1;
+    --line: #373e47;
+    --accent: #4493f8;
+    --accent-fg: #0d1117;
+    --danger: #f85149;
+    --ok: #3fb950;
+    --btn: #262c36;
+    --btn-hover: #2f3742;
+    --focus: #58a6ff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 320px;
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.5 system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  font-weight: 600;
+}
+
+.icon {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.icon:hover {
+  background: var(--btn-hover);
+  color: var(--fg);
+}
+
+.status {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  min-height: 62px;
+}
+
+.row {
+  min-height: 20px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.err {
+  color: var(--danger);
+  word-break: break-word;
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.progress {
+  margin-top: 6px;
+  height: 4px;
+  background: var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.actions {
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+button {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--btn);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--btn-hover);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-fg);
+  font-weight: 600;
+  padding: 10px;
+}
+
+.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.ghost {
+  background: none;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 45%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+}
+
+.overlay[hidden] {
+  display: none;
+}
+
+.dialog {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  width: 100%;
+  max-height: 92vh;
+  overflow: auto;
+}
+
+.dialog h2 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.dialog p {
+  margin: 0 0 8px;
+}
+
+.items {
+  margin: 0 0 8px;
+  padding-left: 16px;
+  max-height: 140px;
+  overflow: auto;
+  color: var(--muted);
+}
+
+.items li {
+  word-break: break-all;
+}
+
+.choices {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.choices label {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.danger {
+  background: var(--danger);
+}
