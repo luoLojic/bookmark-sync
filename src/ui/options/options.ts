@@ -284,14 +284,14 @@ ui.confirmOk.addEventListener('click', () => closeConfirm(true));
 ui.resetSync.addEventListener('click', async () => {
   // 需二次确认，说明后果（需求 9.3 维护分组）。
   if (!(await confirmDialog('actionResetSync', 'hintResetSync'))) return;
-  if (!(await confirmDialog('actionResetSync', 'confirmAgain'))) return;
+  if (!(await confirmDialog('confirmResetSyncTitle', 'confirmAgain'))) return;
   const res = await sendRequest({ t: 'resetSyncState' });
   ui.saveState.textContent = res.ok ? t('resetDone') : t('saveStateFailed');
 });
 
 ui.resetAll.addEventListener('click', async () => {
   if (!(await confirmDialog('actionResetAll', 'hintResetAll'))) return;
-  if (!(await confirmDialog('actionResetAll', 'confirmAgain'))) return;
+  if (!(await confirmDialog('confirmResetAllTitle', 'confirmAgain'))) return;
   const res = await sendRequest({ t: 'resetAll' });
   if (res.ok) {
     const cfg = await sendRequest({ t: 'getConfig' });

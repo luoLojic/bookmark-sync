@@ -14,13 +14,13 @@ export type ErrorCode =
   | 'server'
   | 'rateLimited'
   | 'conflict'
+  | 'aborted'
   // fatal
   | 'auth'
   | 'notFound'
   | 'misconfigured'
   | 'verification'
   | 'protocol'
-  | 'aborted'
   | 'busy'
   | 'internal'
   // userAction
@@ -100,6 +100,14 @@ export class ConflictError extends TransientError {
   }
 }
 
+/** 用户取消：原子提交点之前按瞬时错误处理，不清任何状态（方案 4 要点 4）。 */
+export class AbortedError extends TransientError {
+  readonly code = 'aborted' as const;
+  constructor() {
+    super('aborted by user', { messageKey: 'errAborted' });
+  }
+}
+
 // ── Fatal：本次失败，报给用户，不清状态 ───────────────────────────────
 
 export abstract class FatalError extends AppError {
@@ -132,14 +140,6 @@ export class VerificationError extends FatalError {
 /** 快照格式损坏、JSON 解析失败。 */
 export class ProtocolError extends FatalError {
   readonly code = 'protocol' as const;
-}
-
-/** 用户取消（★原子提交点之前才允许，方案 4 要点 4）。 */
-export class AbortedError extends FatalError {
-  readonly code = 'aborted' as const;
-  constructor() {
-    super('aborted by user', { messageKey: 'errAborted' });
-  }
 }
 
 /** NFR-10 单实例：已有同步在运行。 */

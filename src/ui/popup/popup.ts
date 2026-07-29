@@ -6,8 +6,9 @@
 
 import { localizeDom, t } from '../i18n.js';
 import { onEvent, sendRequest, type ConfirmDetail, type Request, type StatusPayload } from '../messages.js';
-import type { Counts } from '../../domain/tree.js';
 import type { Phase } from '../../shared/types.js';
+
+type Counts = NonNullable<StatusPayload['localCounts']>;
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);

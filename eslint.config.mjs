@@ -95,6 +95,12 @@ export default tseslint.config(
     rules: { 'no-console': 'off' },
   },
 
+  // logger 的可选控制台镜像是 NFR-9 的显式组成部分。
+  {
+    files: ['src/shared/logger.ts'],
+    rules: { 'no-console': 'off' },
+  },
+
   {
     files: ['scripts/**/*.mjs'],
     ...tseslint.configs.disableTypeChecked,

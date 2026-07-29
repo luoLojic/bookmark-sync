@@ -144,11 +144,11 @@ export async function mergeMap(entries: GuidMap): Promise<void> {
   await area.set({ [K.map]: { ...cur, ...entries } });
 }
 
-/** 整表替换。仅用于首次同步匹配后重建，或用户显式重置。 */
-export async function putMap(map: GuidMap): Promise<void> {
-  await area.set({ [K.map]: map });
-}
-
+/**
+ * INV-2 只增不减：故本模块不提供整表替换接口。
+ * 首次同步匹配得到的多条映射同样经 mergeMap 一次写入；
+ * 唯一的删除入口是用户显式重置走的 clearMap / resetAll。
+ */
 export async function clearMap(): Promise<void> {
   await area.remove([K.map]);
 }

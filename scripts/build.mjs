@@ -3,20 +3,24 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
+// 图标是可复现的生成物，不纳入版本控制；每次构建前重新生成。
+await import('./gen-icons.mjs');
+
 const root = path.resolve(import.meta.dirname, '..');
 const out = path.join(root, 'dist');
 const watch = process.argv.includes('--watch');
 const dev = watch || process.argv.includes('--dev');
 
 const entryPoints = {
-  background: path.join(root, 'src/background.ts'),
-  popup: path.join(root, 'src/ui/popup/popup.ts'),
-  options: path.join(root, 'src/ui/options/options.ts'),
+  background: './src/background.ts',
+  popup: './src/ui/popup/popup.ts',
+  options: './src/ui/options/options.ts',
 };
 
 /** @type {import('esbuild').BuildOptions} */
 const options = {
   entryPoints,
+  absWorkingDir: root,
   outdir: out,
   bundle: true,
   format: 'esm',

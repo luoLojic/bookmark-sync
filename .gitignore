@@ -4,6 +4,8 @@ node_modules/
 # Generated build, test and package artifacts
 dist/
 coverage/
+icons/
+release/
 *.zip
 *.crx
 *.log
