@@ -75,6 +75,7 @@
           <button id="btn-test" data-i18n="actionTestConnection"></button>
           <span id="test-result" class="muted" aria-live="polite"></span>
         </div>
+        <p id="degraded-warning" class="hint warn" role="alert" hidden></p>
       </section>
 
       <!-- 同步 -->
@@ -123,6 +124,7 @@
           <button id="btn-history-reload" data-i18n="actionReloadHistory"></button>
           <span id="history-summary" class="muted" aria-live="polite"></span>
         </div>
+        <p class="hint" data-i18n="historyNeverDeleted"></p>
         <table id="history-table">
           <thead>
             <tr>
@@ -130,7 +132,7 @@
               <th data-i18n="colDevice"></th>
               <th data-i18n="colBookmarks"></th>
               <th data-i18n="colFolders"></th>
-              <th></th>
+              <th data-i18n="historyColAction"></th>
             </tr>
           </thead>
           <tbody id="history-body"></tbody>
@@ -144,6 +146,7 @@
           <label for="deviceName" data-i18n="fieldDeviceName"></label>
           <input id="deviceName" type="text" />
         </div>
+        <p class="hint" data-i18n="deviceNameHint"></p>
       </section>
 
       <!-- 维护 -->

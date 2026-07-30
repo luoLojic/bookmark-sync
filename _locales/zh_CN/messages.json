@@ -1,206 +1,544 @@
 {
-  "extName": { "message": "书签同步器" },
-  "extShortName": { "message": "书签同步" },
-  "extDescription": { "message": "通过 WebDAV 或 S3 在多台设备之间同步浏览器书签，弱网可靠，保留历史版本。" },
-
-  "popupTitle": { "message": "书签同步" },
-  "openOptions": { "message": "设置" },
-  "actionSync": { "message": "同  步" },
-  "actionUpload": { "message": "上传" },
-  "actionDownload": { "message": "下载" },
-  "actionCancel": { "message": "取消" },
-  "actionConfirm": { "message": "确认" },
-  "btnClose": { "message": "关闭" },
-
-  "stateNotConfigured": { "message": "未配置远端存储" },
-  "stateReady": { "message": "就绪" },
-  "stateError": { "message": "同步失败" },
-  "statusSyncing": { "message": "同步中" },
-  "lastSyncNever": { "message": "尚未同步" },
-  "lastSyncAt": { "message": "上次同步：$1", "placeholders": { "1": { "content": "$1" } } },
+  "extName": {
+    "message": "书签同步器"
+  },
+  "extShortName": {
+    "message": "书签同步"
+  },
+  "extDescription": {
+    "message": "通过 WebDAV 或 S3 在多台设备之间同步浏览器书签，弱网可靠，保留历史版本。"
+  },
+  "popupTitle": {
+    "message": "书签同步"
+  },
+  "openOptions": {
+    "message": "设置"
+  },
+  "actionSync": {
+    "message": "同  步"
+  },
+  "actionUpload": {
+    "message": "上传"
+  },
+  "actionDownload": {
+    "message": "下载"
+  },
+  "actionCancel": {
+    "message": "取消"
+  },
+  "actionConfirm": {
+    "message": "确认"
+  },
+  "stateNotConfigured": {
+    "message": "未配置远端存储"
+  },
+  "stateReady": {
+    "message": "就绪"
+  },
+  "stateError": {
+    "message": "同步失败"
+  },
+  "lastSyncNever": {
+    "message": "尚未同步"
+  },
+  "lastSyncAt": {
+    "message": "上次同步：$1",
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      }
+    }
+  },
   "countsLine": {
     "message": "本地 $1 · 云端 $2",
-    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" } }
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      },
+      "2": {
+        "content": "$2"
+      }
+    }
   },
-  "countsLocalOnly": { "message": "本地 $1 · 云端 未知", "placeholders": { "1": { "content": "$1" } } },
-  "goToSettings": { "message": "打开设置" },
-
-  "agoJustNow": { "message": "刚刚" },
-  "agoMinutes": { "message": "$1 分钟前", "placeholders": { "1": { "content": "$1" } } },
-  "agoHours": { "message": "$1 小时前", "placeholders": { "1": { "content": "$1" } } },
-  "agoDays": { "message": "$1 天前", "placeholders": { "1": { "content": "$1" } } },
-
-  "phase_idle": { "message": "就绪" },
-  "phase_read": { "message": "读取远端" },
-  "phase_merge": { "message": "合并" },
-  "phase_guard": { "message": "删除保护检查" },
-  "phase_applyLocal": { "message": "应用本地改动" },
-  "phase_putHistory": { "message": "写入历史快照" },
-  "phase_putBookmarks": { "message": "提交远端" },
-  "phase_verify": { "message": "写后校验" },
-  "phase_putIndex": { "message": "更新历史索引" },
-  "phase_writeBaseline": { "message": "保存基线" },
-  "phase_done": { "message": "完成" },
-
-  "confirmTitle_upload": { "message": "上传：本地覆盖云端" },
+  "countsLocalOnly": {
+    "message": "本地 $1 · 云端 未知",
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      }
+    }
+  },
+  "goToSettings": {
+    "message": "打开设置"
+  },
+  "agoJustNow": {
+    "message": "刚刚"
+  },
+  "agoMinutes": {
+    "message": "$1 分钟前",
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      }
+    }
+  },
+  "agoHours": {
+    "message": "$1 小时前",
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      }
+    }
+  },
+  "agoDays": {
+    "message": "$1 天前",
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      }
+    }
+  },
+  "phase_idle": {
+    "message": "就绪"
+  },
+  "phase_read": {
+    "message": "读取远端"
+  },
+  "phase_merge": {
+    "message": "合并"
+  },
+  "phase_guard": {
+    "message": "删除保护检查"
+  },
+  "phase_applyLocal": {
+    "message": "应用本地改动"
+  },
+  "phase_putHistory": {
+    "message": "写入历史快照"
+  },
+  "phase_putBookmarks": {
+    "message": "提交远端"
+  },
+  "phase_verify": {
+    "message": "写后校验"
+  },
+  "phase_putIndex": {
+    "message": "更新历史索引"
+  },
+  "phase_writeBaseline": {
+    "message": "保存基线"
+  },
+  "phase_done": {
+    "message": "完成"
+  },
+  "confirmTitle_upload": {
+    "message": "上传：本地覆盖云端"
+  },
   "confirmBodyUpload": {
     "message": "云端 $1 个书签将被替换为本地 $2 个书签，其中 $3 个云端独有书签将丢失。",
-    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" }, "3": { "content": "$3" } }
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      },
+      "2": {
+        "content": "$2"
+      },
+      "3": {
+        "content": "$3"
+      }
+    }
   },
-  "confirmTitle_download": { "message": "下载：云端覆盖本地" },
+  "confirmTitle_download": {
+    "message": "下载：云端覆盖本地"
+  },
   "confirmBodyDownload": {
     "message": "本地 $1 个书签将被替换为云端 $2 个书签，其中 $3 个本地独有书签将丢失。",
-    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" }, "3": { "content": "$3" } }
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      },
+      "2": {
+        "content": "$2"
+      },
+      "3": {
+        "content": "$3"
+      }
+    }
   },
-  "confirmLostItems": { "message": "将要丢失的条目：" },
-  "confirmMore": { "message": "…另有 $1 条未列出", "placeholders": { "1": { "content": "$1" } } },
-
-  "confirmTitle_deleteGuard": { "message": "删除保护已触发" },
+  "confirmLostItems": {
+    "message": "将要丢失的条目："
+  },
+  "confirmMore": {
+    "message": "…另有 $1 条未列出",
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmTitle_deleteGuard": {
+    "message": "删除保护已触发"
+  },
   "confirmBodyGuard": {
     "message": "本次同步将删除 $1 个条目（影响侧：$2）。",
-    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" } }
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      },
+      "2": {
+        "content": "$2"
+      }
+    }
   },
-  "side_local": { "message": "本地" },
-  "side_remote": { "message": "云端" },
-  "side_both": { "message": "本地与云端" },
+  "side_local": {
+    "message": "本地"
+  },
+  "side_remote": {
+    "message": "云端"
+  },
+  "side_both": {
+    "message": "本地与云端"
+  },
   "guardBodyLocal": {
     "message": "本次同步将从本地删除 $1 个条目（占本地 $2 个的 $3%）。",
-    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" }, "3": { "content": "$3" } }
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      },
+      "2": {
+        "content": "$2"
+      },
+      "3": {
+        "content": "$3"
+      }
+    }
   },
   "guardBodyRemote": {
     "message": "本次同步将从云端删除 $1 个条目（占云端 $2 个的 $3%）。",
-    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" }, "3": { "content": "$3" } }
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      },
+      "2": {
+        "content": "$2"
+      },
+      "3": {
+        "content": "$3"
+      }
+    }
   },
-  "guardConfirm": { "message": "确认删除并继续" },
-
-  "confirmTitle_firstSync": { "message": "首次同步" },
-  "confirmBodyFirstSync": {
-    "message": "本地 $1 个条目，云端 $2 个条目；合并后约 $3 个条目。请选择处理方式。",
-    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" }, "3": { "content": "$3" } }
+  "guardConfirm": {
+    "message": "确认删除并继续"
+  },
+  "confirmTitle_firstSync": {
+    "message": "首次同步"
   },
   "firstSyncBody": {
     "message": "本设备尚无同步记录。本地 $1 个书签 / $2 个文件夹，云端 $3 个书签 / $4 个文件夹。请选择处理方式。",
     "placeholders": {
-      "1": { "content": "$1" },
-      "2": { "content": "$2" },
-      "3": { "content": "$3" },
-      "4": { "content": "$4" }
+      "1": {
+        "content": "$1"
+      },
+      "2": {
+        "content": "$2"
+      },
+      "3": {
+        "content": "$3"
+      },
+      "4": {
+        "content": "$4"
+      }
     }
   },
-  "firstSync_merge": { "message": "合并双方（推荐）" },
+  "firstSync_merge": {
+    "message": "合并双方（推荐）"
+  },
   "firstSyncMergeHint": {
     "message": "按 URL 匹配书签、按路径匹配文件夹，去重后合并，结果约 $1 个书签 / $2 个文件夹。",
-    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" } }
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      },
+      "2": {
+        "content": "$2"
+      }
+    }
   },
-  "firstSync_useLocal": { "message": "用本地覆盖云端" },
-  "firstSync_useRemote": { "message": "用云端覆盖本地" },
-
+  "firstSync_useLocal": {
+    "message": "用本地覆盖云端"
+  },
+  "firstSync_useRemote": {
+    "message": "用云端覆盖本地"
+  },
   "resultSynced": {
     "message": "同步完成：新增 $1 · 更新 $2 · 移动 $3 · 删除 $4",
     "placeholders": {
-      "1": { "content": "$1" },
-      "2": { "content": "$2" },
-      "3": { "content": "$3" },
-      "4": { "content": "$4" }
+      "1": {
+        "content": "$1"
+      },
+      "2": {
+        "content": "$2"
+      },
+      "3": {
+        "content": "$3"
+      },
+      "4": {
+        "content": "$4"
+      }
     }
   },
-  "resultNoChange": { "message": "无变化" },
-
-  "optionsTitle": { "message": "书签同步器 设置" },
-  "groupRemote": { "message": "远端存储" },
-  "groupSync": { "message": "同步" },
-  "groupHistory": { "message": "历史版本" },
-  "groupDevice": { "message": "设备" },
-  "groupMaintenance": { "message": "维护" },
-
-  "fieldRemoteKind": { "message": "类型" },
-  "fieldWebdavUrl": { "message": "地址" },
-  "fieldWebdavUser": { "message": "用户名" },
-  "fieldWebdavPass": { "message": "密码" },
-  "fieldBasePath": { "message": "基础路径" },
-  "fieldS3Endpoint": { "message": "Endpoint" },
-  "fieldS3Region": { "message": "区域" },
-  "fieldS3Bucket": { "message": "Bucket" },
-  "fieldS3AccessKey": { "message": "Access Key" },
-  "fieldS3SecretKey": { "message": "Secret Key" },
-  "fieldS3Prefix": { "message": "路径前缀" },
-  "fieldS3PathStyle": { "message": "路径风格寻址（MinIO 等自建服务需要）" },
-  "actionTestConnection": { "message": "测试连接" },
-  "testRunning": { "message": "正在测试…" },
-  "testOkIfMatch": { "message": "连接正常，支持条件写（If-Match）。" },
-  "testOkNoIfMatch": { "message": "连接正常；不支持条件写，已降级为写后校验。" },
-  "testOk": { "message": "连接正常。条件写（If-Match）：$1", "placeholders": { "1": { "content": "$1" } } },
-  "capSupported": { "message": "支持" },
-  "capUnsupported": { "message": "不支持，已降级为写后校验" },
+  "resultNoChange": {
+    "message": "无变化"
+  },
+  "optionsTitle": {
+    "message": "书签同步器 设置"
+  },
+  "groupRemote": {
+    "message": "远端存储"
+  },
+  "groupSync": {
+    "message": "同步"
+  },
+  "groupHistory": {
+    "message": "历史版本"
+  },
+  "groupDevice": {
+    "message": "设备"
+  },
+  "groupMaintenance": {
+    "message": "维护"
+  },
+  "fieldRemoteKind": {
+    "message": "类型"
+  },
+  "fieldWebdavUrl": {
+    "message": "地址"
+  },
+  "fieldWebdavUser": {
+    "message": "用户名"
+  },
+  "fieldWebdavPass": {
+    "message": "密码"
+  },
+  "fieldBasePath": {
+    "message": "基础路径"
+  },
+  "fieldS3Endpoint": {
+    "message": "Endpoint"
+  },
+  "fieldS3Region": {
+    "message": "区域"
+  },
+  "fieldS3Bucket": {
+    "message": "Bucket"
+  },
+  "fieldS3AccessKey": {
+    "message": "Access Key"
+  },
+  "fieldS3SecretKey": {
+    "message": "Secret Key"
+  },
+  "fieldS3Prefix": {
+    "message": "路径前缀"
+  },
+  "fieldS3PathStyle": {
+    "message": "路径风格寻址（MinIO 等自建服务需要）"
+  },
+  "actionTestConnection": {
+    "message": "测试连接"
+  },
+  "testRunning": {
+    "message": "正在测试…"
+  },
+  "testOkIfMatch": {
+    "message": "连接正常，支持条件写（If-Match）。"
+  },
+  "testOkNoIfMatch": {
+    "message": "连接正常；不支持条件写，已降级为写后校验。"
+  },
   "capDegradedWarning": {
     "message": "此服务器不支持条件写。扩展已降级为写后校验模式，多设备同时提交时存在极小概率的更新丢失窗口。"
   },
-  "hintS3Verified": { "message": "已验证：AWS S3、MinIO。其他 S3 兼容服务可填写，但未验证。" },
-
-  "fieldScheduleEnabled": { "message": "定时同步" },
-  "fieldScheduleMinutes": { "message": "间隔（分钟）" },
-  "fieldSyncOnStartup": { "message": "浏览器启动时同步" },
-  "fieldGuardCount": { "message": "删除保护：条数阈值" },
-  "fieldGuardRatio": { "message": "删除保护：百分比阈值" },
-  "fieldTimeout": { "message": "请求超时（秒）" },
-  "fieldMaxRetries": { "message": "最大重试次数" },
-  "fieldCompress": { "message": "压缩上传（gzip）" },
-  "hintOrderLocalWins": { "message": "顺序冲突以本地为准（不可更改）" },
-
-  "fieldDeviceName": { "message": "设备名" },
-  "deviceNameHint": { "message": "仅用于历史记录展示。" },
-
-  "historyEmpty": { "message": "暂无历史版本" },
-  "colTime": { "message": "时间" },
-  "colDevice": { "message": "来源设备" },
-  "colBookmarks": { "message": "书签" },
-  "colFolders": { "message": "文件夹" },
-  "historyColAction": { "message": "操作" },
-  "actionDownloadFile": { "message": "下载" },
-  "actionRefreshIndex": { "message": "刷新索引" },
-  "actionReloadHistory": { "message": "重新载入" },
-  "historyLoading": { "message": "正在载入…" },
-  "historyRebuilding": { "message": "正在重建索引…" },
+  "hintS3Verified": {
+    "message": "已验证：AWS S3、MinIO。其他 S3 兼容服务可填写，但未验证。"
+  },
+  "fieldScheduleEnabled": {
+    "message": "定时同步"
+  },
+  "fieldScheduleMinutes": {
+    "message": "间隔（分钟）"
+  },
+  "fieldSyncOnStartup": {
+    "message": "浏览器启动时同步"
+  },
+  "fieldGuardCount": {
+    "message": "删除保护：条数阈值"
+  },
+  "fieldGuardRatio": {
+    "message": "删除保护：百分比阈值"
+  },
+  "fieldTimeout": {
+    "message": "请求超时（秒）"
+  },
+  "fieldMaxRetries": {
+    "message": "最大重试次数"
+  },
+  "fieldCompress": {
+    "message": "压缩上传（gzip）"
+  },
+  "hintOrderLocalWins": {
+    "message": "顺序冲突以本地为准（不可更改）"
+  },
+  "fieldDeviceName": {
+    "message": "设备名"
+  },
+  "deviceNameHint": {
+    "message": "仅用于历史记录展示。"
+  },
+  "historyEmpty": {
+    "message": "暂无历史版本"
+  },
+  "colTime": {
+    "message": "时间"
+  },
+  "colDevice": {
+    "message": "来源设备"
+  },
+  "colBookmarks": {
+    "message": "书签"
+  },
+  "colFolders": {
+    "message": "文件夹"
+  },
+  "historyColAction": {
+    "message": "操作"
+  },
+  "actionDownloadFile": {
+    "message": "下载"
+  },
+  "actionRefreshIndex": {
+    "message": "刷新索引"
+  },
+  "actionReloadHistory": {
+    "message": "重新载入"
+  },
+  "historyLoading": {
+    "message": "正在载入…"
+  },
+  "historyRebuilding": {
+    "message": "正在重建索引…"
+  },
   "historySummary": {
     "message": "共 $1 个历史版本，估算占用 $2。",
-    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" } }
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      },
+      "2": {
+        "content": "$2"
+      }
+    }
   },
-  "historyNeverDeleted": { "message": "历史版本永不自动删除。" },
-
-  "actionExportLog": { "message": "导出日志" },
-  "actionResetSync": { "message": "重置同步状态" },
-  "hintResetSync": { "message": "清空基线，保留 ID 映射与配置。下次同步将按首次同步处理。" },
-  "actionResetAll": { "message": "完全重置" },
-  "hintResetAll": { "message": "清空基线、ID 映射与全部配置，包括远端地址与凭据。" },
-  "confirmResetSyncTitle": { "message": "确认重置同步状态？" },
-  "confirmResetAllTitle": { "message": "确认完全重置？" },
-  "confirmAgain": { "message": "此操作不可撤销，请再次确认。" },
-  "btnSave": { "message": "保存" },
-  "saveStatePending": { "message": "正在保存…" },
-  "saveStateSaved": { "message": "已保存" },
-  "saveStateFailed": { "message": "保存失败" },
-  "resetDone": { "message": "已重置" },
-
-  "permissionNeeded": { "message": "需要授权访问 $1", "placeholders": { "1": { "content": "$1" } } },
-  "permissionDenied": { "message": "未获得该地址的访问授权，无法同步。" },
-
-  "errAuth": { "message": "认证失败，请检查用户名与密码。" },
-  "errNotFound": { "message": "远端路径不存在：$1", "placeholders": { "1": { "content": "$1" } } },
-  "errNetwork": { "message": "网络错误，请稍后重试。" },
-  "errTimeout": { "message": "请求超时，请稍后重试。" },
-  "errServer": { "message": "服务器错误，请稍后重试。" },
-  "errConflictExhausted": { "message": "其他设备正在频繁提交，请稍后重试。" },
-  "errVerification": { "message": "写后校验未通过，本次同步未生效，请重试。" },
-  "errProtocol": { "message": "远端数据格式无法解析。" },
+  "historyNeverDeleted": {
+    "message": "历史版本永不自动删除。"
+  },
+  "actionExportLog": {
+    "message": "导出日志"
+  },
+  "actionResetSync": {
+    "message": "重置同步状态"
+  },
+  "hintResetSync": {
+    "message": "清空基线，保留 ID 映射与配置。下次同步将按首次同步处理。"
+  },
+  "actionResetAll": {
+    "message": "完全重置"
+  },
+  "hintResetAll": {
+    "message": "清空基线、ID 映射与全部配置，包括远端地址与凭据。"
+  },
+  "confirmResetSyncTitle": {
+    "message": "确认重置同步状态？"
+  },
+  "confirmResetAllTitle": {
+    "message": "确认完全重置？"
+  },
+  "confirmAgain": {
+    "message": "此操作不可撤销，请再次确认。"
+  },
+  "saveStatePending": {
+    "message": "正在保存…"
+  },
+  "saveStateSaved": {
+    "message": "已保存"
+  },
+  "saveStateFailed": {
+    "message": "保存失败"
+  },
+  "resetDone": {
+    "message": "已重置"
+  },
+  "permissionDenied": {
+    "message": "未获得该地址的访问授权，无法同步。"
+  },
+  "errAuth": {
+    "message": "认证失败，请检查用户名与密码。"
+  },
+  "errNotFound": {
+    "message": "远端路径不存在：$1",
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errNetwork": {
+    "message": "网络错误，请稍后重试。"
+  },
+  "errTimeout": {
+    "message": "请求超时，请稍后重试。"
+  },
+  "errServer": {
+    "message": "服务器错误，请稍后重试。"
+  },
+  "errConflictExhausted": {
+    "message": "其他设备正在频繁提交，请稍后重试。"
+  },
+  "errVerification": {
+    "message": "写后校验未通过，本次同步未生效，请重试。"
+  },
+  "errProtocol": {
+    "message": "远端数据格式无法解析。"
+  },
   "errFormatTooNew": {
     "message": "远端数据由更高版本的扩展写入（格式版本 $1），请先升级扩展。",
-    "placeholders": { "1": { "content": "$1" } }
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      }
+    }
   },
-  "errAborted": { "message": "已取消。" },
-  "errBusy": { "message": "已有同步正在进行。" },
-  "errNotConfigured": { "message": "请先在设置中填写远端地址与凭据。" },
-  "errDeleteGuard": { "message": "删除保护已触发，需要确认。" },
-  "errFirstSync": { "message": "首次同步需要选择处理方式。" },
-  "errUnknown": { "message": "未知错误：$1", "placeholders": { "1": { "content": "$1" } } },
-  "errNotReady": { "message": "该功能将在后续开发里程碑中启用。" }
+  "errAborted": {
+    "message": "已取消。"
+  },
+  "errBusy": {
+    "message": "已有同步正在进行。"
+  },
+  "errNotConfigured": {
+    "message": "请先在设置中填写远端地址与凭据。"
+  },
+  "errDeleteGuard": {
+    "message": "删除保护已触发，需要确认。"
+  },
+  "errFirstSync": {
+    "message": "首次同步需要选择处理方式。"
+  },
+  "errUnknown": {
+    "message": "未知错误：$1",
+    "placeholders": {
+      "1": {
+        "content": "$1"
+      }
+    }
+  }
 }

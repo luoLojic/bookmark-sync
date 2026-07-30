@@ -30,6 +30,7 @@ const el = {
   confirm: $<HTMLDivElement>('confirm'),
   confirmTitle: $<HTMLHeadingElement>('confirm-title'),
   confirmBody: $<HTMLParagraphElement>('confirm-body'),
+  confirmListLabel: $<HTMLParagraphElement>('confirm-list-label'),
   confirmList: $<HTMLUListElement>('confirm-list'),
   confirmMore: $<HTMLParagraphElement>('confirm-more'),
   confirmChoices: $<HTMLDivElement>('confirm-choices'),
@@ -71,7 +72,7 @@ function render(s: StatusPayload): void {
     el.stateLine.textContent = t('stateNotConfigured');
     el.stateLine.className = 'warn';
     el.lastSync.textContent = '';
-    el.counts.textContent = '';
+    el.counts.replaceChildren(linkToSettings());
     setBusy(false);
     el.sync.disabled = true;
     el.upload.disabled = true;
@@ -80,7 +81,10 @@ function render(s: StatusPayload): void {
   }
 
   el.lastSync.textContent = s.last ? t('lastSyncAt', fmtAgo(s.last.at)) : t('lastSyncNever');
-  el.counts.textContent = t('countsLine', fmtCounts(s.localCounts), fmtCounts(s.remoteCounts));
+  el.counts.textContent =
+    s.remoteCounts === null
+      ? t('countsLocalOnly', fmtCounts(s.localCounts))
+      : t('countsLine', fmtCounts(s.localCounts), fmtCounts(s.remoteCounts));
 
   const running = s.state?.running === true;
   setBusy(running);
@@ -95,6 +99,18 @@ function render(s: StatusPayload): void {
     el.stateLine.textContent = t('stateReady');
     el.stateLine.className = 'ok';
   }
+}
+
+/** 未配置时的引导链接。齿轮图标不够显眼，首次使用的用户容易找不到。 */
+function linkToSettings(): HTMLButtonElement {
+  const link = document.createElement('button');
+  link.className = 'ghost link';
+  link.textContent = t('goToSettings');
+  link.addEventListener('click', () => {
+    void chrome.runtime.openOptionsPage();
+    window.close();
+  });
+  return link;
 }
 
 function setProgress(done: number, total: number): void {
@@ -126,6 +142,9 @@ function showConfirm(detail: ConfirmDetail): Promise<string | null> {
   );
   el.confirmMore.hidden = detail.itemsTruncated <= 0;
   el.confirmMore.textContent = t('confirmMore', String(detail.itemsTruncated));
+  el.confirmListLabel.hidden = detail.items.length === 0;
+  el.confirmListLabel.textContent = t('confirmLostItems');
+  el.confirmOk.textContent = detail.kind === 'deleteGuard' ? t('guardConfirm') : t('actionConfirm');
 
   // 首次同步是三选一（FR-4），其余是确认/取消。
   const isChoice = detail.kind === 'firstSync';
@@ -133,12 +152,21 @@ function showConfirm(detail: ConfirmDetail): Promise<string | null> {
   el.confirmOk.hidden = isChoice;
   if (isChoice) {
     el.confirmChoices.replaceChildren(
-      ...(['merge', 'useLocal', 'useRemote'] as const).map((c) => {
+      ...(['merge', 'useLocal', 'useRemote'] as const).flatMap((c) => {
         const b = document.createElement('button');
         b.textContent = t(`firstSync_${c}`);
         b.className = c === 'merge' ? 'primary' : '';
         b.addEventListener('click', () => finishConfirm(c));
-        return b;
+        if (c !== 'merge') return [b];
+        // 「合并」是推荐项，把预估结果写在按钮下方，用户才好判断。
+        const hint = document.createElement('p');
+        hint.className = 'muted';
+        hint.textContent = t(
+          'firstSyncMergeHint',
+          String(detail.merged?.bookmarks ?? 0),
+          String(detail.merged?.folders ?? 0),
+        );
+        return [b, hint];
       }),
     );
   }
@@ -157,14 +185,27 @@ function confirmBody(d: ConfirmDetail): string {
       return t('confirmBodyUpload', String(r), String(l), String(d.losing));
     case 'download':
       return t('confirmBodyDownload', String(l), String(r), String(d.losing));
-    case 'deleteGuard':
+    case 'deleteGuard': {
+      // 按侧别给出「删多少 / 共多少 / 占比」，光给一个数字用户无法判断严重性。
+      const pct = (part: number, whole: number): string =>
+        whole === 0 ? '0' : String(Math.round((part / whole) * 100));
+      const local = d.totals?.local ?? 0;
+      const remote = d.totals?.remote ?? 0;
+      if (d.side === 'local') {
+        return t('guardBodyLocal', String(d.losing), String(local), pct(d.losing, local));
+      }
+      if (d.side === 'remote') {
+        return t('guardBodyRemote', String(d.losing), String(remote), pct(d.losing, remote));
+      }
       return t('confirmBodyGuard', String(d.losing), t(`side_${d.side ?? 'both'}`));
+    }
     case 'firstSync':
       return t(
-        'confirmBodyFirstSync',
-        String(l),
-        String(r),
-        String((d.merged?.bookmarks ?? 0) + (d.merged?.folders ?? 0)),
+        'firstSyncBody',
+        String(d.localCounts.bookmarks),
+        String(d.localCounts.folders),
+        String(d.remoteCounts.bookmarks),
+        String(d.remoteCounts.folders),
       );
   }
 }
@@ -245,6 +286,27 @@ el.options.addEventListener('click', () => {
   window.close();
 });
 
+/** 同步完成后的一行摘要。无改动时说「无变化」，别让用户以为没生效。 */
+function renderResult(result: {
+  created: number;
+  updated: number;
+  moved: number;
+  removed: number;
+}): void {
+  const touched = result.created + result.updated + result.moved + result.removed;
+  el.stateLine.className = 'ok';
+  el.stateLine.textContent =
+    touched === 0
+      ? t('resultNoChange')
+      : t(
+          'resultSynced',
+          String(result.created),
+          String(result.updated),
+          String(result.moved),
+          String(result.removed),
+        );
+}
+
 onEvent((ev) => {
   switch (ev.t) {
     case 'progress':
@@ -257,6 +319,20 @@ onEvent((ev) => {
       render(ev.payload);
       break;
     case 'done':
+      renderResult(ev.result);
+      // 刷新计数与「上次同步」，但保留上面这行摘要。
+      void sendRequest({ t: 'getStatus' }).then((res) => {
+        if (res.ok && res.t === 'status') {
+          el.lastSync.textContent = res.payload.last ? t('lastSyncAt', fmtAgo(res.payload.last.at)) : '';
+          el.counts.textContent = t(
+            'countsLine',
+            fmtCounts(res.payload.localCounts),
+            fmtCounts(res.payload.remoteCounts),
+          );
+          setBusy(false);
+        }
+      });
+      break;
     case 'error':
       void refresh();
       break;

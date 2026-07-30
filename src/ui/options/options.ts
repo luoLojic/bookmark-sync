@@ -6,6 +6,7 @@
 
 import { localizeDom, t } from '../i18n.js';
 import { sendRequest } from '../messages.js';
+import { chromePermissions, ensureOrigin } from '../../platform/permissions.js';
 import type { Config, HistoryEntry, RemoteKind } from '../../shared/types.js';
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -51,6 +52,7 @@ const ui = {
   resetSync: $<HTMLButtonElement>('btn-reset-sync'),
   resetAll: $<HTMLButtonElement>('btn-reset-all'),
   saveState: $<HTMLSpanElement>('save-state'),
+  degraded: $<HTMLParagraphElement>('degraded-warning'),
   confirm: $<HTMLDivElement>('confirm'),
   confirmTitle: $<HTMLHeadingElement>('confirm-title'),
   confirmBody: $<HTMLParagraphElement>('confirm-body'),
@@ -149,8 +151,32 @@ f.remoteKind.addEventListener('change', () => showPane(f.remoteKind.value as Rem
 
 // ── 测试连接（同时探测 If-Match，需求 9.3） ───────────────────────────
 
+/**
+ * 远端地址对应的 host 权限只在这里申请（NFR-13）。
+ *
+ * chrome.permissions.request 要求用户手势，service worker 里调用会直接失败，
+ * 所以这一步必须留在设置页的点击处理里，不能下推给后台。
+ */
+async function ensureRemotePermission(): Promise<boolean> {
+  const url = f.remoteKind.value === 's3' ? f.s3Endpoint.value.trim() : f.webdavUrl.value.trim();
+  if (url === '') return true;
+  try {
+    return await ensureOrigin(url, chromePermissions);
+  } catch {
+    // 地址还没填对时不拦着用户，真正的错误由「测试连接」报出来。
+    return true;
+  }
+}
+
 ui.test.addEventListener('click', async () => {
   await save();
+
+  if (!(await ensureRemotePermission())) {
+    ui.testResult.className = 'error';
+    ui.testResult.textContent = t('permissionDenied');
+    return;
+  }
+
   ui.test.disabled = true;
   ui.testResult.className = 'muted';
   ui.testResult.textContent = t('testRunning');
@@ -166,11 +192,23 @@ ui.test.addEventListener('click', async () => {
   if (res.t !== 'caps') return;
   ui.testResult.className = res.caps.ifMatch ? 'ok' : 'warn';
   ui.testResult.textContent = res.caps.ifMatch ? t('testOkIfMatch') : t('testOkNoIfMatch');
+  showDegraded(res.caps.ifMatch === false);
 });
+
+/** FR-18 要求把降级模式的更新丢失窗口明确告知用户，不能只在测试结果里一闪而过。 */
+function showDegraded(degraded: boolean): void {
+  ui.degraded.hidden = !degraded;
+  ui.degraded.textContent = t('capDegradedWarning');
+}
 
 // ── 历史版本（FR-15 / FR-16） ─────────────────────────────────────────
 
 function renderHistory(entries: HistoryEntry[], bytes: number): void {
+  if (entries.length === 0) {
+    ui.historySummary.textContent = t('historyEmpty');
+    ui.historyBody.replaceChildren();
+    return;
+  }
   ui.historySummary.textContent = t('historySummary', String(entries.length), formatBytes(bytes));
   ui.historyBody.replaceChildren(
     ...entries.map((e) => {
@@ -178,8 +216,9 @@ function renderHistory(entries: HistoryEntry[], bytes: number): void {
       const cells = [
         formatTime(e.writtenAt),
         e.writtenBy || '—',
-        String(e.bookmarks),
-        String(e.folders),
+        // 0 表示「刷新索引」从文件名重建的条目，计数无从得知（见 remote/history.ts）。
+        e.bookmarks === 0 ? '—' : String(e.bookmarks),
+        e.folders === 0 ? '—' : String(e.folders),
       ];
       for (const text of cells) {
         const td = document.createElement('td');
@@ -306,6 +345,12 @@ async function init(): Promise<void> {
   localizeDom();
   const res = await sendRequest({ t: 'getConfig' });
   if (res.ok && res.t === 'config') fill(res.config);
+
+  // 已探测过且不支持条件写时，进页面就要看到降级提示（FR-18）。
+  const status = await sendRequest({ t: 'getStatus' });
+  if (status.ok && status.t === 'status') showDegraded(status.payload.caps?.ifMatch === false);
+
+  if (status.ok && status.t === 'status' && status.payload.configured) await loadHistory();
 }
 
 void init();

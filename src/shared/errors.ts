@@ -67,16 +67,23 @@ export abstract class TransientError extends AppError {
   readonly klass = 'transient' as const;
 }
 
+/**
+ * 每个会走到界面的错误都带 messageKey：NFR-11 要求全部界面文字经
+ * chrome.i18n 取得，直接把英文的 message 显示给用户就破了这条。
+ */
 export class NetworkError extends TransientError {
   readonly code = 'network' as const;
+  override readonly messageKey = 'errNetwork';
 }
 
 export class TimeoutError extends TransientError {
   readonly code = 'timeout' as const;
+  override readonly messageKey = 'errTimeout';
 }
 
 export class ServerError extends TransientError {
   readonly code = 'server' as const;
+  override readonly messageKey = 'errServer';
   constructor(
     readonly status: number,
     message = `HTTP ${status}`,
@@ -87,6 +94,7 @@ export class ServerError extends TransientError {
 
 export class RateLimited extends TransientError {
   readonly code = 'rateLimited' as const;
+  override readonly messageKey = 'errServer';
   constructor(readonly retryAfterMs?: number) {
     super('HTTP 429');
   }
@@ -95,6 +103,7 @@ export class RateLimited extends TransientError {
 /** 412：其他设备已提交，回到 READ 重新合并（FR-17）。 */
 export class ConflictError extends TransientError {
   readonly code = 'conflict' as const;
+  override readonly messageKey = 'errConflictExhausted';
   constructor(message = 'precondition failed') {
     super(message);
   }
@@ -135,11 +144,13 @@ export class MisconfiguredError extends FatalError {
 /** 写后校验不通过、内容截断（NFR-4）。 */
 export class VerificationError extends FatalError {
   readonly code = 'verification' as const;
+  override readonly messageKey = 'errVerification';
 }
 
 /** 快照格式损坏、JSON 解析失败。 */
 export class ProtocolError extends FatalError {
   readonly code = 'protocol' as const;
+  override readonly messageKey = 'errProtocol';
 }
 
 /** NFR-10 单实例：已有同步在运行。 */
@@ -152,6 +163,12 @@ export class BusyError extends FatalError {
 
 export class InternalError extends FatalError {
   readonly code = 'internal' as const;
+  override readonly messageKey = 'errUnknown';
+  constructor(message: string, opts?: { cause?: unknown }) {
+    // errUnknown 带一个占位符，把原始信息填进去 —— 未知错误至少要让用户
+    // 看到能复制给我们的线索，而不是一句「未知错误」。
+    super(message, { messageArgs: [message], ...(opts ?? {}) });
+  }
 }
 
 // ── UserActionRequired ───────────────────────────────────────────────

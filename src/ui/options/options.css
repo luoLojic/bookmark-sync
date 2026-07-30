@@ -218,3 +218,13 @@ footer {
   text-align: right;
   font-size: 12px;
 }
+
+.warn {
+  color: #9a6700;
+}
+
+@media (prefers-color-scheme: dark) {
+  .warn {
+    color: #d29922;
+  }
+}

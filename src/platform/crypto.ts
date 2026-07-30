@@ -25,9 +25,10 @@ const K = new Uint32Array([
 
 const rotr = (x: number, n: number): number => ((x >>> n) | (x << (32 - n))) >>> 0;
 
-/** SHA-256，同步实现。输入按 UTF-8 编码，输出 64 位小写十六进制。 */
-export function sha256Hex(text: string): string {
-  const msg = new TextEncoder().encode(text);
+const utf8 = new TextEncoder();
+
+/** SHA-256 原始摘要（32 字节）。SigV4 需要对任意字节做哈希与 HMAC。 */
+export function sha256Bytes(msg: Uint8Array): Uint8Array {
 
   // 填充：0x80 一字节 + 若干 0 + 8 字节大端比特长度，补齐到 64 字节整数倍。
   const bitLen = msg.length * 8;
@@ -35,9 +36,9 @@ export function sha256Hex(text: string): string {
   withPad.set(msg);
   withPad[msg.length] = 0x80;
   // 长度字段用两个 32 位写入，避免 BigInt 与 2^32 位以上的精度问题。
-  const view = new DataView(withPad.buffer);
-  view.setUint32(withPad.length - 8, Math.floor(bitLen / 0x100000000), false);
-  view.setUint32(withPad.length - 4, bitLen >>> 0, false);
+  const padView = new DataView(withPad.buffer);
+  padView.setUint32(withPad.length - 8, Math.floor(bitLen / 0x100000000), false);
+  padView.setUint32(withPad.length - 4, bitLen >>> 0, false);
 
   // 初始哈希值：前 8 个素数平方根小数部分的前 32 位。
   let h0 = 0x6a09e667;
@@ -52,7 +53,7 @@ export function sha256Hex(text: string): string {
   const w = new Uint32Array(64);
 
   for (let offset = 0; offset < withPad.length; offset += 64) {
-    for (let i = 0; i < 16; i++) w[i] = view.getUint32(offset + i * 4, false);
+    for (let i = 0; i < 16; i++) w[i] = padView.getUint32(offset + i * 4, false);
     for (let i = 16; i < 64; i++) {
       const w15 = w[i - 15]!;
       const w2 = w[i - 2]!;
@@ -98,7 +99,52 @@ export function sha256Hex(text: string): string {
     h7 = (h7 + h) >>> 0;
   }
 
-  return [h0, h1, h2, h3, h4, h5, h6, h7].map((x) => x.toString(16).padStart(8, '0')).join('');
+  const out = new Uint8Array(32);
+  const view = new DataView(out.buffer);
+  [h0, h1, h2, h3, h4, h5, h6, h7].forEach((word, i) => view.setUint32(i * 4, word, false));
+  return out;
+}
+
+export function toHex(bytes: Uint8Array): string {
+  let out = '';
+  for (const b of bytes) out += b.toString(16).padStart(2, '0');
+  return out;
+}
+
+/** SHA-256，输入按 UTF-8 编码，输出 64 位小写十六进制。 */
+export function sha256Hex(text: string): string {
+  return toHex(sha256Bytes(utf8.encode(text)));
+}
+
+export function sha256HexBytes(bytes: Uint8Array): string {
+  return toHex(sha256Bytes(bytes));
+}
+
+/**
+ * HMAC-SHA256（RFC 2104）。SigV4 的签名密钥派生链全靠它。
+ * 自己实现的理由同 SHA-256：crypto.subtle 是异步的，而调用方需要同步签名。
+ */
+export function hmacSha256(key: Uint8Array, data: Uint8Array): Uint8Array {
+  const blockSize = 64;
+  let k = key;
+  if (k.length > blockSize) k = sha256Bytes(k);
+
+  const padded = new Uint8Array(blockSize);
+  padded.set(k);
+
+  const inner = new Uint8Array(blockSize + data.length);
+  const outer = new Uint8Array(blockSize + 32);
+  for (let i = 0; i < blockSize; i++) {
+    inner[i] = padded[i]! ^ 0x36;
+    outer[i] = padded[i]! ^ 0x5c;
+  }
+  inner.set(data, blockSize);
+  outer.set(sha256Bytes(inner), blockSize);
+  return sha256Bytes(outer);
+}
+
+export function hmacSha256Text(key: Uint8Array, text: string): Uint8Array {
+  return hmacSha256(key, utf8.encode(text));
 }
 
 /**
