@@ -9,6 +9,7 @@ const B2 = 'b-000000000002';
 const B3 = 'b-000000000003';
 const F1 = 'f-000000000001';
 const F2 = 'f-000000000002';
+const F3 = 'f-000000000003';
 
 const kindsOf = (ops: readonly LocalOp[]): string[] => ops.map((o) => o.kind);
 const firstIndexOf = (ops: readonly LocalOp[], kind: LocalOp['kind']): number =>
@@ -148,6 +149,25 @@ describe('buildPlan — 排序约束（方案 3.3）', () => {
     const target = tree([fd(F1, '新建', [bk(B1, 'A')])]);
     const ops = buildPlan(current, target);
     expect(lastIndexOf(ops, 'create')).toBeLessThan(firstIndexOf(ops, 'move'));
+    expect(applyPlan(current, ops)).toEqual(target);
+  });
+
+  it('父子互换：move 按目标深度升序，不会中途把文件夹移入自身子树', () => {
+    // current 是 F1 装着 F2，target 是 F2 装着 F1。若先执行「把 F1 移进 F2」，
+    // 那一刻 F2 还在 F1 里面 —— 浏览器会拒绝这种移动。
+    const current = tree([fd(F1, '甲', [fd(F2, '乙')])]);
+    const target = tree([fd(F2, '乙', [fd(F1, '甲')])]);
+    const ops = buildPlan(current, target);
+    const order = ops.filter((o) => o.kind === 'move').map((o) => o.guid);
+    expect(order).toEqual([F2, F1]);
+    expect(applyPlan(current, ops)).toEqual(target);
+  });
+
+  it('三层链整体倒置同样安全', () => {
+    const current = tree([fd(F1, '甲', [fd(F2, '乙', [fd(F3, '丙')])])]);
+    const target = tree([fd(F3, '丙', [fd(F2, '乙', [fd(F1, '甲')])])]);
+    const ops = buildPlan(current, target);
+    expect(ops.filter((o) => o.kind === 'move').map((o) => o.guid)).toEqual([F3, F2, F1]);
     expect(applyPlan(current, ops)).toEqual(target);
   });
 });

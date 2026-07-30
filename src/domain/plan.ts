@@ -109,6 +109,7 @@ export function buildPlan(current: Roots, target: Roots): LocalOp[] {
   }
 
   // update / move：两侧都有。
+  const moveTargets: Guid[] = [];
   for (const [guid, before] of cIdx) {
     const after = tIdx.get(guid);
     if (after === undefined) continue;
@@ -125,9 +126,24 @@ export function buildPlan(current: Roots, target: Roots): LocalOp[] {
     }
     if (dirty) updates.push(patch);
 
-    if (before.parentGuid !== after.parentGuid) {
-      moves.push({ kind: 'move', guid, parentGuid: after.parentGuid, index: after.index });
-    }
+    if (before.parentGuid !== after.parentGuid) moveTargets.push(guid);
+  }
+
+  /**
+   * move 按目标树深度升序执行。
+   *
+   * 不排序会在「父子互换」时崩掉：current 是 A 装着 B、target 是 B 装着 A 时，
+   * 若先执行「把 A 移进 B」，那一刻 B 还在 A 里面，等于把文件夹移入自身子树 ——
+   * 浏览器会拒绝，applyPlan 也会抛错。
+   *
+   * 升序为什么够：处理深度 d 的节点时，它的目标父深度是 d-1，已经处理完并落在
+   * 最终位置，且其整条祖先链也已定型；而目标树里该父是本节点的祖先，故本节点
+   * 不可能出现在这条链上，也就不会构成「移入自身子树」。
+   */
+  moveTargets.sort((a, b) => depthIn(tIdx, a) - depthIn(tIdx, b));
+  for (const guid of moveTargets) {
+    const after = tIdx.get(guid)!;
+    moves.push({ kind: 'move', guid, parentGuid: after.parentGuid, index: after.index });
   }
 
   // remove：当前独有。按当前树深度降序，保证子先于父。
