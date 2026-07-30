@@ -1,3 +1,63 @@
+# 行尾统一为 LF。
+#
+# 这条对本项目不是形式主义：仓库在 Windows 上开发，而 CI 跑在 ubuntu，
+# 若任由各自的 core.autocrlf 决定，同一文件会在两地产生不同的字节，
+# 导致内容哈希与打包体积门禁的结果随平台漂移。工作区检出仍按下面的
+# 显式规则处理，脚本与配置一律 LF。
 * text=auto eol=lf
-*.png binary
-*.zip binary
+
+# ── 源码与配置：强制 LF ─────────────────────────────────────────────
+*.ts    text eol=lf
+*.mts   text eol=lf
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.cjs   text eol=lf
+*.json  text eol=lf
+*.jsonc text eol=lf
+*.html  text eol=lf
+*.css   text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.sh    text eol=lf
+.gitignore      text eol=lf
+.gitattributes  text eol=lf
+
+# Windows 批处理必须是 CRLF，否则 cmd.exe 解析会出错。
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# ── 二进制：禁止行尾转换与文本 diff ─────────────────────────────────
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.zip   binary
+*.gz    binary
+*.crx   binary
+*.pem   binary
+
+# ── 语言统计与 diff 呈现 ────────────────────────────────────────────
+# 锁文件由 npm 生成，不计入语言统计，也默认折叠 diff。
+package-lock.json linguist-generated=true -diff
+# _locales 是数据而非代码。
+_locales/**/*.json linguist-language=JSON linguist-detectable=false
+
+# JSON / TS 使用更贴切的 diff 分块启发式。
+*.json diff=json
+*.ts   diff=typescript
+*.md   diff=markdown
+
+# ── 源码归档（git archive）时排除的开发文件 ──────────────────────────
+# 用 git archive 导出源码包时不必带上测试与协作文档。
+# 注意：这不影响 npm run zip 产出的扩展包（那个只打包 dist/）。
+/.github        export-ignore
+/.gitattributes export-ignore
+/.gitignore     export-ignore
+/test           export-ignore
+/HANDOFF.md     export-ignore

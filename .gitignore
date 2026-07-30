@@ -1,28 +1,65 @@
-# Dependencies
+# ── 依赖 ────────────────────────────────────────────────────────────
 node_modules/
+.pnpm-store/
+jspm_packages/
 
-# Generated build, test and package artifacts
+# ── 构建、测试与打包产物 ────────────────────────────────────────────
+# 全部可由 npm run build / zip / coverage 重新生成，不入版本控制。
 dist/
+release/
 coverage/
 icons/
-release/
 *.zip
-*.crx
-*.log
+*.tgz
+.eslintcache
+*.tsbuildinfo
 
-# Local configuration and secrets
+# ── 扩展签名与私钥（务必保持忽略）────────────────────────────────────
+# chrome://extensions 的「打包扩展程序」会产出 <name>.crx 与 <name>.pem，
+# 后者是签名私钥：一旦泄露，他人即可签出被浏览器视为「同一扩展」的包。
+*.crx
+*.pem
+*.p12
+*.pfx
+*.key
+
+# ── 本地配置与凭据 ──────────────────────────────────────────────────
+# 远端地址与密码只存在浏览器 storage 中，仓库里不应出现任何凭据；
+# 以下规则用于兜住临时调试文件。
 .env
 .env.*
-!.env.example
 *.local
 config.local.*
-!config.local.example.*
+secrets.*
+*.credentials.json
 
-# Editor and operating-system files
+# ── 日志与临时文件 ──────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+tmp/
+temp/
+tmp-*.mjs
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# ── 编辑器与操作系统 ────────────────────────────────────────────────
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
+.history/
 .DS_Store
+.AppleDouble
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
 
-# TypeScript incremental build metadata
-*.tsbuildinfo
+# ── AI 工具的本地状态 ──────────────────────────────────────────────
+.claude/

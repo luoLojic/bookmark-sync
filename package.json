@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "description": "书签同步器 —— 通过 WebDAV / S3 在多设备间同步浏览器书签",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luoLojic/bookmark-sync.git"
+  },
+  "bugs": {
+    "url": "https://github.com/luoLojic/bookmark-sync/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=20"

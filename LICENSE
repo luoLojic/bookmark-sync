@@ -1,0 +1,115 @@
+# 书签同步器 许可证（非商业使用）
+
+版权所有 © 2026 luoLojic。保留所有权利。
+
+本许可证以中文版为准，文末英文版仅供参考。本许可证不是 OSI 认证的开源许可证，
+也不是自由软件许可证 —— 它允许除商业使用之外的一切用途。
+
+## 一、授予的权利
+
+在遵守下列全部条件的前提下，任何人均可免费获得本软件及其相关文档（下称
+「本软件」）的副本，并被授予以下权利：
+
+1. **使用**：为任何非商业目的安装、运行本软件；
+2. **复制与分发**：无偿复制并分发本软件的完整副本；
+3. **修改**：修改本软件，并无偿分发修改后的版本；
+4. **研究**：阅读、分析、评测本软件的源代码。
+
+## 二、唯一的限制：不得用于商业用途
+
+**禁止将本软件或其任何衍生作品用于商业用途。**
+
+「商业用途」指任何以获取金钱收入或其他商业利益为目的的使用，或在营利性组织的
+业务活动中的使用，包括但不限于：
+
+1. 出售、出租、许可本软件或其修改版本，或将其作为付费产品、付费服务的组成部分
+   提供给他人；
+2. 在公司或其他营利性组织的内部运营中使用本软件；
+3. 借由本软件或其衍生作品投放广告、收取订阅费、收取安装费，或以任何其他方式
+   变现；
+4. 将本软件或其衍生作品以收费形式分发，或上架至需要付费下载的应用市场。
+
+以下**不属于**商业用途，均在授权范围内：
+
+- 个人自用，包括在个人拥有的多台设备之间同步；
+- 学习、教学、学术研究与论文引用；
+- 非营利组织、公益机构的使用；
+- 无偿的公开分发，包括免费上架应用市场；
+- 提交问题报告、补丁与派生版本。
+
+如需商业授权，请联系版权持有人另行取得书面许可。
+
+## 三、分发时的附随条件
+
+分发本软件或其修改版本时，必须同时满足：
+
+1. 保留本许可证全文与上述版权声明；
+2. 若作了修改，须以显著方式标明修改的内容与修改者，不得使接收方误认为修改
+   版本来自原作者；
+3. 不得对接收方施加任何超出本许可证范围的额外限制。
+
+## 四、免责声明
+
+本软件按「现状」（AS IS）提供，不附带任何明示或默示的担保，包括但不限于对
+适销性、特定用途适用性以及非侵权的担保。在任何情况下，作者或版权持有人均不
+就任何索赔、损害或其他责任承担责任，无论其源于合同、侵权或其他事由，亦不论
+是否与本软件、本软件的使用或其他交易相关。
+
+**特别提示**：本软件会修改你的浏览器书签，并向你指定的远端地址写入数据。
+错误配置、网络异常或软件缺陷都可能导致书签数据发生非预期的变更。使用前请
+自行导出书签备份，风险由使用者自行承担。
+
+## 五、许可证的终止
+
+若你违反本许可证的任何条件，本许可证授予你的权利即自动终止。在你停止违约行为，
+并（如适用）取得版权持有人书面形式的恢复许可后，相关权利可以恢复。
+
+---
+
+# Bookmark Sync License (Noncommercial)
+
+Copyright © 2026 luoLojic. All rights reserved.
+
+*This English text is a convenience translation. In case of any discrepancy, the
+Chinese text above prevails. This is not an OSI-approved open source license.*
+
+**Grant.** Subject to the conditions below, you are granted a royalty-free,
+worldwide, non-exclusive license to use, run, copy, distribute, modify, and study
+this software and its documentation (the "Software"), for any purpose that is not
+a Commercial Purpose.
+
+**The only restriction.** Use of the Software, or any derivative work, for a
+**Commercial Purpose** is prohibited. "Commercial Purpose" means any use intended
+for monetary revenue or other commercial advantage, or any use in the business
+operations of a for-profit organization. This includes, without limitation:
+selling, renting, or licensing the Software; bundling it into a paid product or
+service; using it in internal business operations of a for-profit entity; and
+monetizing it through advertising, subscription, or installation fees.
+
+Personal use (including syncing across your own devices), study, teaching,
+academic research, use by nonprofit organizations, and free-of-charge public
+redistribution are **not** Commercial Purposes and are permitted.
+
+For a commercial license, contact the copyright holder to obtain separate written
+permission.
+
+**Conditions on distribution.** You must retain this license and the copyright
+notice in full; you must prominently mark any modifications and their author, and
+must not represent a modified version as originating from the original author; and
+you must not impose restrictions beyond those in this license.
+
+**Disclaimer.** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
+EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+Note in particular that this Software modifies your browser bookmarks and writes
+data to a remote endpoint you configure. Back up your bookmarks before use; you
+assume all risk.
+
+**Termination.** Your rights under this license terminate automatically if you
+breach any of its conditions, and may be reinstated once you cure the breach and,
+where applicable, obtain written reinstatement from the copyright holder.
