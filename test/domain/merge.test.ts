@@ -6,12 +6,12 @@ import {
   emptyRoots,
   isRootGuid,
   indexRoots,
-  makeBookmark,
   makeFolder,
   type NodeRecord,
   type Roots,
   type TreeNode,
 } from '../../src/domain/tree.js';
+import { bk, fd, rootsArb, tree } from '../fixtures/trees.js';
 
 const B1 = 'b-000000000001';
 const B2 = 'b-000000000002';
@@ -19,18 +19,6 @@ const B3 = 'b-000000000003';
 const F1 = 'f-000000000001';
 const F2 = 'f-000000000002';
 const F3 = 'f-000000000003';
-
-function tree(bar: TreeNode[] = [], other: TreeNode[] = []): Roots {
-  const r = emptyRoots();
-  r.bar.children = bar;
-  r.other.children = other;
-  return r;
-}
-
-const bk = (guid: string, title: string, url = 'https://x.test/'): TreeNode =>
-  makeBookmark(guid, title, url);
-const fd = (guid: string, title: string, children: TreeNode[] = []): TreeNode =>
-  makeFolder(guid, title, children);
 
 /** 合并后展平为索引，便于逐 GUID 断言最终形态。 */
 function merged(base: Roots, local: Roots, remote: Roots): Map<string, NodeRecord> {
@@ -310,32 +298,6 @@ describe('merge 结构与顺序', () => {
  * 恒等式的推论，而不是需要单独实现的性质 —— 因此必须真的验证恒等式成立。
  */
 describe('merge 代数性质', () => {
-  /** 树形状：'b' 为书签，数组为文件夹及其子项。 */
-  type Shape = 'b' | Shape[];
-
-  const shapeArb: fc.Memo<Shape> = fc.memo((depth) =>
-    depth <= 1
-      ? fc.constant<Shape>('b')
-      : fc.oneof(fc.constant<Shape>('b'), fc.array(shapeArb(depth - 1), { maxLength: 3 })),
-  );
-
-  const forestArb = fc.array(shapeArb(3), { maxLength: 4 });
-
-  /** 形状 → 真实树。GUID 按遍历序确定性编号，便于 shrink。 */
-  function build(shapes: readonly Shape[], counter: { n: number }): TreeNode[] {
-    return shapes.map((s) => {
-      const id = String(++counter.n).padStart(12, '0');
-      return s === 'b'
-        ? makeBookmark(`b-${id}`, `T${id}`, `https://t${id}.test/`)
-        : makeFolder(`f-${id}`, `F${id}`, build(s, counter));
-    });
-  }
-
-  const rootsArb = fc.tuple(forestArb, forestArb).map(([barShapes, otherShapes]) => {
-    const counter = { n: 0 };
-    return tree(build(barShapes, counter), build(otherShapes, counter));
-  });
-
   it('幂等：merge(T, T, T) = T', () => {
     fc.assert(
       fc.property(rootsArb, (t) => {

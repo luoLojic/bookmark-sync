@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { diff, diffIndexes, countDeletions, isEmptyDiff, summarize } from '../../src/domain/diff.js';
+import {
+  countDeletions,
+  deletedRecords,
+  diff,
+  diffIndexes,
+  isEmptyDiff,
+  summarize,
+} from '../../src/domain/diff.js';
 import {
   emptyRoots,
   indexRoots,
@@ -194,5 +201,14 @@ describe('diffIndexes / summarize', () => {
   it('treats an empty tree pair as no change', () => {
     expect(isEmptyDiff(diff(emptyRoots(), emptyRoots()))).toBe(true);
     expect(summarize(diff(emptyRoots(), emptyRoots()))).toEqual({ create: 0, delete: 0, update: 0, move: 0 });
+  });
+
+  it('exposes the deleted records for the confirmation dialog (FR-10)', () => {
+    // 弹窗要列出「将要丢失的条目」，需要标题与 URL，不只是数量。
+    const a = bar(makeBookmark(B1, 'A', 'https://a.test/'), makeFolder(F1, '技术'));
+    const records = deletedRecords(diff(a, bar()));
+    expect(records.map((r) => r.title).sort()).toEqual(['A', '技术']);
+    expect(records.find((r) => r.guid === B1)?.url).toBe('https://a.test/');
+    expect(deletedRecords(diff(a, a))).toEqual([]);
   });
 });
