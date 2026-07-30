@@ -232,6 +232,7 @@ export function mergeTrees(input: MergeInput): Roots {
     else list.push(guid);
   }
 
+  const baseOrder = childOrders(bIdx);
   const localOrder = childOrders(lIdx);
   const remoteOrder = childOrders(rIdx);
 
@@ -240,6 +241,7 @@ export function mergeTrees(input: MergeInput): Roots {
     if (survivors.length === 0) return [];
     const ordered = mergeOrder({
       survivors,
+      base: baseOrder.get(parent) ?? [],
       local: localOrder.get(parent) ?? [],
       remote: remoteOrder.get(parent) ?? [],
     });

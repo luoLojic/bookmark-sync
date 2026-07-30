@@ -3,70 +3,109 @@ import { describe, expect, it } from 'vitest';
 import { mergeOrder } from '../../src/domain/order.js';
 
 /**
- * 需求 6.3 的三条规则：
- *   1. 以本地的顺序为骨架；
- *   2. 远端独有的新条目，插入到它在远端顺序中的前驱条目之后；找不到前驱则追加到末尾；
+ * 需求 6.3 的三条规则（规则 1 按 order.ts 头部说明修正为三方判定）：
+ *   1. 以改动过顺序的那一侧为骨架；两侧都改过时以本地为准；
+ *   2. 另一侧独有的新条目，插入到它在该侧顺序中的前驱之后；找不到前驱则追加末尾；
  *   3. 两侧都删除的条目直接移除。
- *
- * 顺序不做独立的冲突消解 —— 这是用户已确认接受的取舍（需求 6.3 代价一段）。
  */
-describe('mergeOrder', () => {
-  it('uses local order as the skeleton', () => {
+describe('mergeOrder — 骨架的选择（规则 1）', () => {
+  it('本地改过顺序 → 以本地为骨架', () => {
     expect(
-      mergeOrder({ survivors: ['a', 'b', 'c'], local: ['c', 'a', 'b'], remote: ['a', 'b', 'c'] }),
+      mergeOrder({ survivors: ['a', 'b', 'c'], base: ['a', 'b', 'c'], local: ['c', 'a', 'b'], remote: ['a', 'b', 'c'] }),
     ).toEqual(['c', 'a', 'b']);
   });
 
-  it('drops entries that did not survive the merge', () => {
+  it('本地未改过顺序 → 采纳远端的顺序', () => {
+    // 需求 6.3 说「另一方的重排会在下次同步时被覆盖」，成立的前提正是这一条：
+    // 没动过顺序的一方不该把对方的重排改回去。
     expect(
-      mergeOrder({ survivors: ['a', 'c'], local: ['a', 'b', 'c'], remote: ['a', 'b', 'c'] }),
-    ).toEqual(['a', 'c']);
+      mergeOrder({ survivors: ['a', 'b', 'c'], base: ['a', 'b', 'c'], local: ['a', 'b', 'c'], remote: ['c', 'b', 'a'] }),
+    ).toEqual(['c', 'b', 'a']);
   });
 
-  it('inserts a remote-only entry after its remote predecessor', () => {
-    // 远端在 a 之后新增了 x；本地骨架是 a,b。
+  it('两侧都改过顺序 → 本地优先（需求 6.3 接受的取舍）', () => {
     expect(
-      mergeOrder({ survivors: ['a', 'b', 'x'], local: ['a', 'b'], remote: ['a', 'x', 'b'] }),
-    ).toEqual(['a', 'x', 'b']);
+      mergeOrder({ survivors: ['a', 'b', 'c'], base: ['a', 'b', 'c'], local: ['b', 'c', 'a'], remote: ['c', 'b', 'a'] }),
+    ).toEqual(['b', 'c', 'a']);
   });
 
-  it('keeps consecutive remote-only entries in their remote order', () => {
+  it('仅新增条目不算改过顺序', () => {
+    // 否则任何一次追加都会被当成重排，又回到无条件偏向本地、两台设备无限乒乓的老问题。
+    // 远端作骨架 [b,a]，本地独有的 x 按规则 2 落在它的本地前驱 b 之后。
     expect(
-      mergeOrder({ survivors: ['a', 'b', 'x', 'y'], local: ['a', 'b'], remote: ['a', 'x', 'y', 'b'] }),
-    ).toEqual(['a', 'x', 'y', 'b']);
+      mergeOrder({ survivors: ['a', 'b', 'x'], base: ['a', 'b'], local: ['a', 'b', 'x'], remote: ['b', 'a'] }),
+    ).toEqual(['b', 'x', 'a']);
   });
 
-  it('appends a remote-only entry that has no predecessor in remote', () => {
-    // 需求 6.3 规则 2 的字面要求：找不到前驱则追加到末尾。
-    // 代价：远端在文件夹头部新增的条目会落到末尾，而不是头部。
+  it('仅删除条目不算改过顺序', () => {
     expect(
-      mergeOrder({ survivors: ['a', 'b', 'x'], local: ['a', 'b'], remote: ['x', 'a', 'b'] }),
-    ).toEqual(['a', 'b', 'x']);
+      mergeOrder({ survivors: ['a', 'c'], base: ['a', 'b', 'c'], local: ['a', 'c'], remote: ['c', 'a', 'b'] }),
+    ).toEqual(['c', 'a']);
+  });
+});
+
+describe('mergeOrder — 另一侧独有条目的定位（规则 2）', () => {
+  it('插入到它在该侧顺序中的前驱之后', () => {
+    // 本地改过顺序，故本地是骨架；远端新增的 x 按其远端前驱 a 定位。
+    expect(
+      mergeOrder({ survivors: ['a', 'b', 'x'], base: ['a', 'b'], local: ['b', 'a'], remote: ['a', 'x', 'b'] }),
+    ).toEqual(['b', 'a', 'x']);
   });
 
-  it('falls back to the nearest surviving predecessor when the immediate one is gone', () => {
-    // 远端顺序 a,gone,x：x 的直接前驱 gone 未存活，退到更前的 a 之后。
+  it('连续的多个新增项保持彼此的相对顺序', () => {
     expect(
-      mergeOrder({ survivors: ['a', 'b', 'x'], local: ['a', 'b'], remote: ['a', 'gone', 'x', 'b'] }),
-    ).toEqual(['a', 'x', 'b']);
+      mergeOrder({
+        survivors: ['a', 'b', 'x', 'y'],
+        base: ['a', 'b'],
+        local: ['b', 'a'],
+        remote: ['a', 'x', 'y', 'b'],
+      }),
+    ).toEqual(['b', 'a', 'x', 'y']);
   });
 
-  it('appends when every remote predecessor was dropped', () => {
+  it('前驱不存在时追加到末尾', () => {
+    // 远端把 x 放在最前面，但本地是骨架且 x 在本地没有前驱可依 → 追加。
     expect(
-      mergeOrder({ survivors: ['a', 'x'], local: ['a'], remote: ['gone1', 'gone2', 'x', 'a'] }),
+      mergeOrder({ survivors: ['a', 'b', 'x'], base: ['a', 'b'], local: ['b', 'a'], remote: ['x', 'a', 'b'] }),
+    ).toEqual(['b', 'a', 'x']);
+  });
+
+  it('直接前驱已被删除时退到更前的存活前驱', () => {
+    expect(
+      mergeOrder({
+        survivors: ['a', 'b', 'x'],
+        base: ['a', 'b'],
+        local: ['b', 'a'],
+        remote: ['a', 'gone', 'x', 'b'],
+      }),
+    ).toEqual(['b', 'a', 'x']);
+  });
+
+  it('全部前驱都已删除时追加到末尾', () => {
+    expect(
+      mergeOrder({ survivors: ['a', 'x'], base: ['a', 'z'], local: ['z', 'a'], remote: ['gone1', 'x', 'a'] }),
     ).toEqual(['a', 'x']);
   });
+});
 
-  it('appends survivors present in neither side', () => {
+describe('mergeOrder — 存活集合（规则 3）与边界', () => {
+  it('未存活的条目就地移除', () => {
+    expect(
+      mergeOrder({ survivors: ['a', 'c'], base: ['a', 'b', 'c'], local: ['c', 'a', 'b'], remote: ['a', 'b', 'c'] }),
+    ).toEqual(['c', 'a']);
+  });
+
+  it('两侧顺序都未提及的存活项追加末尾', () => {
     // 复活的祖先文件夹（方案 2.4 resurrectAncestors）可能只存在于 base。
     expect(
-      mergeOrder({ survivors: ['a', 'resurrected'], local: ['a'], remote: ['a'] }),
+      mergeOrder({ survivors: ['a', 'resurrected'], base: ['a'], local: ['a'], remote: ['a'] }),
     ).toEqual(['a', 'resurrected']);
   });
 
-  it('returns exactly the survivor set — no duplicates, no extras', () => {
+  it('结果恰为存活集合：无重复、无多余', () => {
     const out = mergeOrder({
       survivors: ['a', 'b', 'x'],
+      base: ['a', 'b', 'dropped'],
       local: ['a', 'b', 'dropped'],
       remote: ['a', 'x', 'b', 'alsoDropped'],
     });
@@ -74,34 +113,26 @@ describe('mergeOrder', () => {
     expect(new Set(out).size).toBe(out.length);
   });
 
-  it('lets local win when both sides reordered the same folder', () => {
-    // 需求 6.3 明确的取舍：以先同步者（此处为本地）的顺序为准。
-    expect(
-      mergeOrder({ survivors: ['a', 'b', 'c'], local: ['b', 'c', 'a'], remote: ['c', 'b', 'a'] }),
-    ).toEqual(['b', 'c', 'a']);
-  });
-
-  it('is idempotent when both sides already agree', () => {
+  it('三侧一致时原样返回', () => {
     const same = ['a', 'b', 'c'];
-    expect(mergeOrder({ survivors: same, local: same, remote: same })).toEqual(same);
+    expect(mergeOrder({ survivors: same, base: same, local: same, remote: same })).toEqual(same);
   });
 
-  it('handles empty folders and empty survivor sets', () => {
-    expect(mergeOrder({ survivors: [], local: [], remote: [] })).toEqual([]);
-    expect(mergeOrder({ survivors: [], local: ['a'], remote: ['b'] })).toEqual([]);
-    expect(mergeOrder({ survivors: ['a'], local: [], remote: [] })).toEqual(['a']);
+  it('空文件夹与空存活集合', () => {
+    expect(mergeOrder({ survivors: [], base: [], local: [], remote: [] })).toEqual([]);
+    expect(mergeOrder({ survivors: [], base: [], local: ['a'], remote: ['b'] })).toEqual([]);
+    expect(mergeOrder({ survivors: ['a'], base: [], local: [], remote: [] })).toEqual(['a']);
   });
 
-  it('accepts a Set as the survivor collection', () => {
+  it('接受 Set 作为存活集合', () => {
     expect(
-      mergeOrder({ survivors: new Set(['a', 'x']), local: ['a'], remote: ['a', 'x'] }),
+      mergeOrder({ survivors: new Set(['a', 'x']), base: ['a'], local: ['a'], remote: ['a', 'x'] }),
     ).toEqual(['a', 'x']);
   });
 
-  it('ignores duplicate guids in the input orders', () => {
-    // 防御性：上游索引理论上不会给出重复 GUID，但重复不应导致结果出现两份。
+  it('输入序列中的重复 GUID 不会让结果出现两份', () => {
     expect(
-      mergeOrder({ survivors: ['a', 'b'], local: ['a', 'a', 'b'], remote: ['a', 'b', 'b'] }),
+      mergeOrder({ survivors: ['a', 'b'], base: ['a', 'b'], local: ['a', 'a', 'b'], remote: ['a', 'b', 'b'] }),
     ).toEqual(['a', 'b']);
   });
 });
@@ -113,20 +144,18 @@ describe('mergeOrder', () => {
  * 这个数组直接交给浏览器 API。若它漏项、重项或含未存活项，将直接表现为书签
  * 丢失或重复，所以这条不能只靠举例覆盖。
  */
-describe('mergeOrder properties', () => {
-  /** 从候选池中抽取一个无重复的 GUID 序列。 */
+describe('mergeOrder 代数性质', () => {
   const pool = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
   const orderArb = fc.uniqueArray(fc.constantFrom(...pool), { maxLength: pool.length });
 
-  const inputArb = fc
-    .record({
-      local: orderArb,
-      remote: orderArb,
-      survivorSeed: fc.uniqueArray(fc.constantFrom(...pool), { maxLength: pool.length }),
-    })
-    .map(({ local, remote, survivorSeed }) => ({ local, remote, survivors: survivorSeed }));
+  const inputArb = fc.record({
+    base: orderArb,
+    local: orderArb,
+    remote: orderArb,
+    survivors: orderArb,
+  });
 
-  it('always returns a permutation of the survivor set', () => {
+  it('结果始终是存活集合的一个排列', () => {
     fc.assert(
       fc.property(inputArb, (input) => {
         const out = mergeOrder(input);
@@ -136,34 +165,50 @@ describe('mergeOrder properties', () => {
     );
   });
 
-  it('preserves the relative order of every surviving local pair', () => {
-    // 规则 1：本地顺序是骨架，远端插入不得打乱本地两项的先后。
+  it('骨架侧存活项的相对顺序被保留', () => {
     fc.assert(
       fc.property(inputArb, (input) => {
         const out = mergeOrder(input);
-        const localSurviving = input.local.filter((g) => input.survivors.includes(g));
-        const projected = out.filter((g) => localSurviving.includes(g));
-        expect(projected).toEqual(localSurviving);
+        // 与实现同样的骨架判定：只比公共元素的相对顺序。
+        const common = (a: readonly string[], b: readonly string[]): string[] => {
+          const inB = new Set(b);
+          return a.filter((g) => inB.has(g));
+        };
+        const localMoved =
+          common(input.local, input.base).join() !== common(input.base, input.local).join();
+        const skeleton = localMoved ? input.local : input.remote;
+        const surviving = skeleton.filter((g) => input.survivors.includes(g));
+        expect(out.filter((g) => surviving.includes(g))).toEqual(surviving);
       }),
     );
   });
 
-  it('is idempotent — feeding the result back changes nothing', () => {
-    // 幂等是 INV-4 收敛的基础（方案 2.3）：重跑同步不应产生新的顺序调整。
+  it('幂等：把结果当作三侧输入再算一次不变', () => {
+    // 幂等是 INV-4 收敛的基础：重跑同步不应产生新的顺序调整。
     fc.assert(
       fc.property(inputArb, (input) => {
         const once = mergeOrder(input);
-        const twice = mergeOrder({ survivors: once, local: once, remote: once });
-        expect(twice).toEqual(once);
+        expect(mergeOrder({ survivors: once, base: once, local: once, remote: once })).toEqual(once);
       }),
     );
   });
 
-  it('equals the shared order when both sides agree', () => {
-    // merge(b, x, x) = x 的顺序侧对应物（方案 7.2 第 2 条）。
+  it('三侧一致时等于该顺序（merge(b,x,x)=x 的顺序侧）', () => {
     fc.assert(
       fc.property(orderArb, (order) => {
-        expect(mergeOrder({ survivors: order, local: order, remote: order })).toEqual(order);
+        expect(mergeOrder({ survivors: order, base: order, local: order, remote: order })).toEqual(order);
+      }),
+    );
+  });
+
+  it('本地未改顺序时结果与远端顺序一致（收敛的关键）', () => {
+    // 这条正是「两台设备各加一条书签也不收敛」那个缺陷的直接判据。
+    fc.assert(
+      fc.property(orderArb, orderArb, (base, remote) => {
+        const survivors = remote.filter((g) => base.includes(g));
+        if (survivors.length === 0) return;
+        const out = mergeOrder({ survivors, base, local: base, remote });
+        expect(out).toEqual(remote.filter((g) => survivors.includes(g)));
       }),
     );
   });
