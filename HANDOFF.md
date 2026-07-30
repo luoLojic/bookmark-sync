@@ -123,3 +123,29 @@ M2 验收要求对 900/120 树完成一次全量应用 < 5s，并把映射写入
 2. 容器化 WebDAV 的集成测试（`bytemark/webdav`），补上 M3 未完成的验收项，尤其要覆盖真实服务器在 MKCOL 与 ETag 上的实现分歧。
 3. Playwright 端到端（方案 7.1 第四层），当前 `test/e2e/` 下只有纯 Node 可跑的脱敏审计。
 4. 若真机实测映射写入超预算，按方案 3.1 的退化路径引入批量 + 预留映射。
+
+## 2026-07-30 · 用户实测反馈：设置页确认覆盖层缺 hidden 兜底
+
+用户实际装载扩展后打开设置页，报告「打开后就显示这个，点取消和确认都无法关闭这个页面」，附截图为一个内容为空的确认覆盖层铺满页面。这是首个来自真实浏览器的缺陷报告，而全部 531 例自动化测试都是绿的。
+
+根因在 CSS 而非逻辑：`hidden` 属性只是靠 UA 样式表的 `display: none` 生效，作者样式里任何显式 `display` 声明都会盖过它。`src/ui/options/options.css` 写了 `.overlay { display: flex }` 却没有对应的 `[hidden]` 覆盖，于是 `<div id="confirm" class="overlay" hidden>` 从打开页面那一刻就是可见的。按钮「点了没反应」是同一原因的表象 —— `closeConfirm()` 设的 `hidden = true` 照样被 `display: flex` 压过，TypeScript 逻辑本身从未出错。`popup.css` 当时有 `.overlay[hidden]` 这条窄覆盖，所以 popup 不受影响。
+
+修复没有采用「给每个 display 规则补一条 `[hidden]`」的写法，而是在两个样式表顶部各加一条全局兜底：
+
+```css
+[hidden] { display: none !important; }
+```
+
+理由是这个缺陷的本质是「新增一条 display 规则就可能悄悄干掉一个 hidden」，逐个补窄规则治不了后续新增。`popup.css` 里 `#confirm-choices` 带 `class="choices"`、而 `.choices { display: grid }` 同样没有覆盖，是完全一样的潜伏缺陷，本轮一并消除。
+
+测试补强：新增 `test/ui/hidden-attribute.test.ts`，断言 `src/ui` 下每个样式表都有裸 `[hidden]` 兜底且带 `!important`，并要求 `pages` 清单与实际存在的 CSS 文件完全一致 —— 将来新增页面若忘了纳入检查，这条会失败而不是静默放过。已用变异测试验证不空转：把全局兜底改回窄的 `.overlay[hidden]`，5 例中 4 例失败。
+
+### 顺带修掉的一个门禁陷阱
+
+`eslint.config.mjs` 的 `ignores` 只列了 `dist/`，漏了 `npm run zip` 产出的 `release/`。因为 `npm run verify` 把 `size` 放在最后，首次运行是干净的，但此后任何单独 `npm run lint` 都会去 lint 打包后的单行 bundle，报出 757 个错误。已补进 ignores。
+
+### 方法论教训
+
+这个缺陷属于「静态资源语义」类：类型系统、ESLint、Node 环境下的单测全都看不见它，因为它既不是类型错误也不是逻辑错误，只在浏览器把 CSS 层叠算出来的那一刻才存在。同类风险还有 CSP、manifest 字段、图标尺寸、`chrome.*` 的真实行为差异 —— 后续若再收到真机反馈，应优先怀疑这类「只在浏览器里成立」的约束，并且每修一处就把约束落成可自动检查的形式（本轮即 `hidden-attribute.test.ts`）。这也再次说明 HANDOFF 里一直挂着的「真机验收三项」不是形式主义。
+
+验证：typecheck、lint 通过；536 例测试全过（新增 5 例）；打包 37.6 KB / 上限 200 KB。

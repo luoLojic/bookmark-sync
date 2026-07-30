@@ -34,6 +34,15 @@
   box-sizing: border-box;
 }
 
+/*
+ * hidden 属性只是「建议」display: none，任何显式 display 声明都会盖过它。
+ * 本页有 .overlay { display: flex }、.choices { display: grid } 等规则，
+ * 若不在此统一兜底，加了 hidden 的元素会照样显示，且脚本设 hidden 也关不掉。
+ */
+[hidden] {
+  display: none !important;
+}
+
 body {
   width: 320px;
   margin: 0;
@@ -177,10 +186,6 @@ button:focus-visible {
   align-items: center;
   justify-content: center;
   padding: 10px;
-}
-
-.overlay[hidden] {
-  display: none;
 }
 
 .dialog {

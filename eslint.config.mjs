@@ -11,7 +11,9 @@ const layerRule = (message, patterns) => ({
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'coverage/**', 'node_modules/**'],
+    // 全部为构建/测试产物（与 .gitignore 一致）：release/ 是 zip 脚本的打包目录，
+    // 里面是 esbuild 压成单行的 bundle，扫它只会刷出成百上千条无意义的报错。
+    ignores: ['dist/**', 'release/**', 'coverage/**', 'node_modules/**'],
   },
 
   ...tseslint.configs.recommended,

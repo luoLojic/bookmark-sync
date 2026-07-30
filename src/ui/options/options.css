@@ -26,6 +26,16 @@
   box-sizing: border-box;
 }
 
+/*
+ * hidden 属性只是「建议」display: none，任何显式 display 声明都会盖过它。
+ * 本页有 .overlay { display: flex } 与 .pane，若不在此统一兜底，
+ * 加了 hidden 的确认覆盖层会在打开设置页时就显示出来，且点按钮也关不掉
+ * （closeConfirm 设的 hidden 同样被 display 压过）。
+ */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   padding: 24px 16px 48px;
