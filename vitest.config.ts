@@ -3,7 +3,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
-    exclude: ['test/e2e/**'],
+    // e2e 目录里目前只有脱敏审计（纯 Node 可跑）；真正需要浏览器的 Playwright
+    // 用例还没有，等有了再按 projects 拆分。
+    exclude: ['**/node_modules/**'],
     environment: 'node',
     coverage: {
       provider: 'v8',

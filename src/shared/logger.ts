@@ -37,8 +37,13 @@ const SECRET_KEYS = [
 ];
 
 const SECRET_KEY_RE = new RegExp(
-  // key="value" / key='value' / key=value / "key": "value" / key: value
-  `\\b(${SECRET_KEYS.join('|')})\\b\\s*[:=]\\s*("[^"]*"|'[^']*'|[^\\s,;&)}\\]]+)`,
+  // 覆盖四种写法：
+  //   key=value        请求参数与手写日志
+  //   key: value       yaml 风格
+  //   key="value"      带引号
+  //   "key": "value"   JSON.stringify 的产物 —— 键名自带闭引号，
+  //                    少了下面那个 `"?` 就会整条漏过去
+  `\\b(${SECRET_KEYS.join('|')})\\b"?\\s*[:=]\\s*("[^"]*"|'[^']*'|[^\\s,;&)}\\]]+)`,
   'gi',
 );
 
