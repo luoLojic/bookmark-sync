@@ -6,6 +6,7 @@ import {
   formatVersion,
   historyFileName,
   isHistoryFilePath,
+  mergeRebuiltIndex,
   parseHistoryFileName,
   rebuildIndexFromNames,
   safeTimestamp,
@@ -190,5 +191,66 @@ describe('isHistoryFilePath', () => {
     ]);
     expect(rebuilt.entries).toHaveLength(2);
     for (const e of rebuilt.entries) expect(isHistoryFilePath(e.file), e.file).toBe(true);
+  });
+});
+
+/**
+ * 「刷新索引」不能整体覆盖（审计 M-4）。
+ *
+ * 文件名里只有版本号与时间戳，设备名与条目计数要下载每份快照才知道 —— 那正是
+ * FR-15 要避免的开销。直接用重建结果覆盖，就把这些信息抹成空值和 0，而它们只有
+ * 当时提交的那台设备知道，谁也补不回来。
+ */
+describe('mergeRebuiltIndex', () => {
+  const entry = (over: Partial<HistoryEntry>): HistoryEntry => ({
+    version: 1,
+    writtenAt: '2026-07-30T10:00:00.000Z',
+    writtenBy: 'Chrome-ab',
+    bookmarks: 358,
+    folders: 47,
+    file: 'history/v000001-2026-07-30T10-00-00-000Z.json.gz',
+    ...over,
+  });
+
+  it('已有版本沿用已有的设备名与计数', () => {
+    const existing = { formatVersion: 1 as const, entries: [entry({})] };
+    const rebuilt = {
+      formatVersion: 1 as const,
+      entries: [entry({ writtenBy: '', bookmarks: 0, folders: 0 })],
+    };
+    const merged = mergeRebuiltIndex(existing, rebuilt);
+    expect(merged.entries[0]).toMatchObject({ writtenBy: 'Chrome-ab', bookmarks: 358, folders: 47 });
+  });
+
+  it('索引里漏掉的版本被捡回来（这才是刷新的目的）', () => {
+    const existing = { formatVersion: 1 as const, entries: [entry({})] };
+    const rebuilt = {
+      formatVersion: 1 as const,
+      entries: [
+        entry({ version: 2, writtenBy: '', bookmarks: 0, folders: 0, file: 'history/v000002-x.json' }),
+        entry({ writtenBy: '', bookmarks: 0, folders: 0 }),
+      ],
+    };
+    const merged = mergeRebuiltIndex(existing, rebuilt);
+    expect(merged.entries.map((e) => e.version)).toEqual([2, 1]);
+  });
+
+  it('远端已不存在的版本被去掉 —— 以文件名为准决定有哪些版本', () => {
+    const existing = {
+      formatVersion: 1 as const,
+      entries: [entry({}), entry({ version: 9, file: 'history/v000009-x.json' })],
+    };
+    const rebuilt = { formatVersion: 1 as const, entries: [entry({ writtenBy: '' })] };
+    expect(mergeRebuiltIndex(existing, rebuilt).entries.map((e) => e.version)).toEqual([1]);
+  });
+
+  it('旧记录本身是空值时不把空值抄回来', () => {
+    const existing = {
+      formatVersion: 1 as const,
+      entries: [entry({ writtenAt: '', writtenBy: '', bookmarks: 0, folders: 0 })],
+    };
+    const rebuilt = { formatVersion: 1 as const, entries: [entry({ writtenBy: '', bookmarks: 0, folders: 0 })] };
+    const merged = mergeRebuiltIndex(existing, rebuilt);
+    expect(merged.entries[0]!.writtenAt).toBe('2026-07-30T10:00:00.000Z');
   });
 });

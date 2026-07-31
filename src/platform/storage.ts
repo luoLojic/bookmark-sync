@@ -168,11 +168,30 @@ export async function getMap(): Promise<GuidMap> {
   return (await readKey<GuidMap>(K.map)) ?? {};
 }
 
+/**
+ * 映射写入的串行队列（审计 M-8）。
+ *
+ * mergeMap 是「读 → 合并 → 写」三步，中间两个 await 都是可打断点。两处并发调用
+ * （读树时的批量 flush 与 applyLocalPlan 里逐条的 set）会双双读到同一份旧数据，
+ * 后写的那次把先写的那批映射整个丢掉 —— 而丢一条映射的后果是下次读树给同一个
+ * 书签分配新 GUID，于是它在远端表现为「旧的被删、新的被加」，远端多一份重复。
+ *
+ * 排成一条链就够了：service worker 是单线程单实例，NFR-10 的单实例锁又保证同一
+ * 时刻只有一次同步。这里防的是同一次同步内部的交错。
+ */
+let mapWrites: Promise<void> = Promise.resolve();
+
 /** 合并写入。绝不覆盖式删除已有项（INV-2）。 */
 export async function mergeMap(entries: GuidMap): Promise<void> {
   if (Object.keys(entries).length === 0) return;
-  const cur = await getMap();
-  await area.set({ [K.map]: { ...cur, ...entries } });
+  const run = mapWrites.then(async () => {
+    const cur = await getMap();
+    await area.set({ [K.map]: { ...cur, ...entries } });
+  });
+  // 链上某次失败不该让后续写入全部拒绝，所以链本身吞掉错误；
+  // 调用方拿到的仍是会 reject 的那个 promise。
+  mapWrites = run.catch(() => undefined);
+  return run;
 }
 
 /**

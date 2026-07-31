@@ -300,7 +300,11 @@ async function runOnce(deps: CommitDeps, round: number): Promise<Omit<CommitOutc
     deps.log?.info('远端内容无变化，跳过写入');
     await writeBaseline(deps, remoteRead.snapshot ?? snapshot, at);
     return {
-      result: countsOf(target, applied, remoteRead.snapshot?.version ?? 0),
+      // 短路时远端内容没动过，远端计数取实际读回的那棵树。
+      result: countsOf(target, applied, remoteRead.snapshot?.version ?? 0, {
+        roots: remoteRoots,
+        uploaded: false,
+      }),
       uploaded: false,
       phase: 'done',
     };
@@ -348,7 +352,7 @@ async function runOnce(deps: CommitDeps, round: number): Promise<Omit<CommitOutc
   await writeBaseline(deps, snapshot, at);
 
   return {
-    result: countsOf(target, applied, nextVersion),
+    result: countsOf(target, applied, nextVersion, { roots: target, uploaded: true }),
     uploaded: true,
     phase: 'done',
   };
@@ -491,19 +495,28 @@ async function writeBaseline(
 
 // ── 辅助 ─────────────────────────────────────────────────────────────
 
+/**
+ * 汇总本轮结果。
+ *
+ * uploaded 与 remote 都要如实反映实际情况（审计 L-5）：原先无条件写
+ * `uploaded: true`、remote 一律取自 target，于是走无变化短路时 result 说「上传了」
+ * 而同一个 CommitOutcome 说没上传，两个字段互相矛盾；远端计数也不代表远端真实
+ * 内容。目前 UI 不读这两个字段，但留着就是个陷阱。
+ */
 function countsOf(
   target: Roots,
   applied: { created: number; updated: number; moved: number; removed: number },
   version: number,
+  remote: { roots: Roots; uploaded: boolean },
 ): ResultCounts {
   return {
     local: countRoots(target),
-    remote: countRoots(target),
+    remote: countRoots(remote.roots),
     created: applied.created,
     updated: applied.updated,
     moved: applied.moved,
     removed: applied.removed,
-    uploaded: true,
+    uploaded: remote.uploaded,
     version,
   };
 }

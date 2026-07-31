@@ -18,7 +18,13 @@ import { createWebdavStore } from './remote/webdav.js';
 import { createS3Store } from './remote/s3.js';
 import { isCapsUsable, probeStore, type RemoteStore } from './remote/store.js';
 import { decodeJson, decodeSnapshot, encodeJson, parseHistoryIndex } from './remote/codec.js';
-import { EMPTY_INDEX, estimateIndexBytes, isHistoryFilePath, rebuildIndexFromNames } from './remote/history.js';
+import {
+  EMPTY_INDEX,
+  estimateIndexBytes,
+  isHistoryFilePath,
+  mergeRebuiltIndex,
+  rebuildIndexFromNames,
+} from './remote/history.js';
 import { REMOTE_FILES } from './shared/config.js';
 import { acquireLock, clearStaleLock } from './engine/lock.js';
 import { createCancellationGate, type CancellationGate } from './engine/cancellation.js';
@@ -447,9 +453,13 @@ async function refreshHistoryIndex(): Promise<Response> {
   const config = await requireConfigured();
   const store = buildStore(config);
   const names = await store.list(REMOTE_FILES.historyDir.replace(/\/$/, ''));
-  const rebuilt = rebuildIndexFromNames(names);
-  await store.put(REMOTE_FILES.historyIndex, await encodeJson(rebuilt, false));
-  log.info(`索引已重建，共 ${rebuilt.entries.length} 项`);
+  // ★ 并入已有索引，不能整体覆盖（审计 M-4）。文件名里只有版本号与时间戳，
+  // 设备名与条目计数要下载每份快照才知道 —— 那正是 FR-15 要避免的开销。直接覆盖
+  // 会把这些信息抹成空值和 0，而它们只有当时提交的那台设备知道，谁也补不回来。
+  const existing = await loadHistoryIndex(store);
+  const merged = mergeRebuiltIndex(existing, rebuildIndexFromNames(names));
+  await store.put(REMOTE_FILES.historyIndex, await encodeJson(merged, false));
+  log.info(`索引已重建，共 ${merged.entries.length} 项（沿用已有记录 ${existing.entries.length} 项）`);
   return { ok: true, t: 'void' };
 }
 

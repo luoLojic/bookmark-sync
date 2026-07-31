@@ -117,3 +117,38 @@ describe('无变化短路必须对远端 roots 重算哈希', () => {
     expect(remote.countRequests('PUT')).toBe(0);
   });
 });
+
+/**
+ * ResultCounts 的 uploaded / remote 要如实（审计 L-5）。
+ *
+ * 原实现无条件写 uploaded: true、remote 一律取自 target，于是无变化短路时同一个
+ * CommitOutcome 里 result.uploaded 与 outcome.uploaded 互相矛盾。目前 UI 不读这两个
+ * 字段，但留着就是个陷阱。
+ */
+describe('结果计数如实反映本轮是否写了远端', () => {
+  it('真的写了远端时 uploaded 为 true', async () => {
+    const remote = new FakeRemote();
+    const dev = createDevice(remote, {
+      name: 'A',
+      local: tree([bk('b-0000000000a1', '甲', 'https://a.test/')]),
+    });
+    const outcome = await dev.sync();
+    expect(outcome.uploaded).toBe(true);
+    expect(outcome.result.uploaded).toBe(true);
+  });
+
+  it('★ 走无变化短路时 uploaded 为 false，两个字段一致', async () => {
+    const remote = new FakeRemote();
+    const dev = createDevice(remote, {
+      name: 'A',
+      local: tree([bk('b-0000000000a1', '甲', 'https://a.test/')]),
+    });
+    await dev.sync();
+    const second = await dev.sync();
+
+    expect(second.uploaded).toBe(false);
+    expect(second.result.uploaded).toBe(false);
+    // 远端计数取自实际读回的远端树，不是目标树。
+    expect(second.result.remote).toEqual({ bookmarks: 1, folders: 0 });
+  });
+});

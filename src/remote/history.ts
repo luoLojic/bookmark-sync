@@ -108,8 +108,36 @@ export function rebuildIndexFromNames(names: readonly string[]): HistoryIndex {
   return { formatVersion: 1, entries };
 }
 
-/** 设置页展示用的估算占用（需求 13：让用户自行判断是否该清理）。 */
-export function estimateIndexBytes(index: HistoryIndex, bytesPerSnapshot: number): number {
+/**
+ * 把重建结果并入已有索引（审计 M-4）。
+ *
+ * 「刷新索引」只能从文件名恢复版本号与时间戳 —— 设备名与条目计数要下载每份快照
+ * 才知道，而那正是 FR-15 要避免的开销。原实现直接用重建结果整体覆盖，于是一次
+ * 刷新就把已有条目的 writtenBy 与计数全抹成空值和 0，而这些信息只有当时提交的
+ * 那台设备知道，谁也补不回来。
+ *
+ * 所以：以文件名为准决定「有哪些版本」（这是刷新的目的：捡回索引里漏掉的、去掉
+ * 已经不存在的），但每条的展示字段优先沿用已有索引里的那份。
+ */
+export function mergeRebuiltIndex(existing: HistoryIndex, rebuilt: HistoryIndex): HistoryIndex {
+  const byVersion = new Map(existing.entries.map((e) => [e.version, e]));
+  const entries = rebuilt.entries.map((fresh) => {
+    const old = byVersion.get(fresh.version);
+    if (old === undefined) return fresh;
+    return {
+      ...fresh,
+      // 只在旧记录确实有值时才沿用，避免把空值又抄回来。
+      writtenAt: old.writtenAt !== '' ? old.writtenAt : fresh.writtenAt,
+      writtenBy: old.writtenBy !== '' ? old.writtenBy : fresh.writtenBy,
+      bookmarks: old.bookmarks > 0 ? old.bookmarks : fresh.bookmarks,
+      folders: old.folders > 0 ? old.folders : fresh.folders,
+    };
+  });
+  entries.sort((a, b) => b.version - a.version);
+  return { formatVersion: 1, entries };
+}
+
+/** 设置页展示用的估算占用（需求 13：让用户自行判断是否该清理）。 */export function estimateIndexBytes(index: HistoryIndex, bytesPerSnapshot: number): number {
   return index.entries.length * Math.max(0, Math.floor(bytesPerSnapshot));
 }
 
