@@ -11,6 +11,7 @@
 
 import { ProtocolError, FormatVersionTooNew } from '../shared/errors.js';
 import { isValidGuid } from '../domain/guid.js';
+import { isHistoryFilePath } from './history.js';
 import {
   FORMAT_VERSION,
   ROOT_GUID,
@@ -200,12 +201,19 @@ export async function decodeSnapshot(bytes: Uint8Array): Promise<Snapshot> {
  *
  * 索引损坏不影响同步正确性，只影响历史列表展示，因此这里宽容处理：
  * 整体不可解析时返回空索引，让「刷新索引」去重建，而不是让设置页报错。
+ *
+ * 但 file 字段必须过路径校验（审计 BUG-13）。索引是远端内容，而它的 file 会被
+ * 直接交给 store.get；不合形状的条目在这里就丢掉，设置页连列都不会列出来，
+ * 后台那道拒绝就成了纯粹的兜底。
  */
 export function parseHistoryIndex(value: unknown): HistoryIndex {
   if (!isRecord(value) || !Array.isArray(value['entries'])) return { formatVersion: 1, entries: [] };
   const entries = value['entries'].filter(
     (e): e is HistoryIndex['entries'][number] =>
-      isRecord(e) && typeof e['file'] === 'string' && typeof e['version'] === 'number',
+      isRecord(e) &&
+      typeof e['file'] === 'string' &&
+      isHistoryFilePath(e['file']) &&
+      typeof e['version'] === 'number',
   );
   return { formatVersion: 1, entries };
 }

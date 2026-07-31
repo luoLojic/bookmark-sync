@@ -5,6 +5,7 @@ import {
   estimateIndexBytes,
   formatVersion,
   historyFileName,
+  isHistoryFilePath,
   parseHistoryFileName,
   rebuildIndexFromNames,
   safeTimestamp,
@@ -132,5 +133,62 @@ describe('estimateIndexBytes（需求 13：让用户自行判断）', () => {
   it('空索引为 0，负数单份大小按 0 处理', () => {
     expect(estimateIndexBytes(EMPTY_INDEX, 8000)).toBe(0);
     expect(estimateIndexBytes(appendToIndex(EMPTY_INDEX, entry(1)), -5)).toBe(0);
+  });
+});
+
+/**
+ * 历史路径校验（审计 BUG-13 / L-8）。
+ *
+ * 索引是远端内容，它的 file 字段会被直接交给 store.get，而 webdav 的 joinUrl
+ * 不过滤 `..`。一份被篡改的 index.json 因此能让扩展带着 Basic 凭据去 GET 同一
+ * 服务器上的任意路径，并把内容显示、下载给用户。
+ */
+describe('isHistoryFilePath', () => {
+  it('接受本扩展自己写出来的名字', () => {
+    for (const suffix of ['.json', '.json.gz'] as const) {
+      const file = historyFileName(7, '2026-07-30T10:00:00.000Z', suffix);
+      expect(isHistoryFilePath(file), file).toBe(true);
+    }
+    // 版本号超过 6 位同样合法（\d{6,}）。
+    expect(isHistoryFilePath('history/v1234567-2026-07-30T10-00-00-000Z.json')).toBe(true);
+  });
+
+  it('★ 拒绝穿越、绝对路径与子目录', () => {
+    for (const bad of [
+      '../../../etc/passwd',
+      'history/../bookmarks.json',
+      'history/../../secret.json',
+      '/history/v000001-x.json',
+      'history/sub/v000001-2026-07-30T10-00-00-000Z.json',
+      'history\v000001-2026-07-30T10-00-00-000Z.json',
+      'history/v000001-2026-07-30T10-00-00-000Z.json/../../x',
+    ]) {
+      expect(isHistoryFilePath(bad), bad).toBe(false);
+    }
+  });
+
+  it('拒绝目录之外、后缀不对与形状不对的名字', () => {
+    for (const bad of [
+      'bookmarks.json',
+      'history/',
+      'history/index.json',
+      'history/v001-2026.json',
+      'history/v000001-2026-07-30T10-00-00-000Z.txt',
+      'history/notaversion.json',
+      '',
+    ]) {
+      expect(isHistoryFilePath(bad), bad).toBe(false);
+    }
+  });
+
+  it('刷新索引重建出来的每一条都通得过校验', () => {
+    const rebuilt = rebuildIndexFromNames([
+      'v000001-2026-07-30T10-00-00-000Z.json.gz',
+      'v000002-2026-07-30T11-00-00-000Z.json',
+      'index.json',
+      '随手放进去的文件.txt',
+    ]);
+    expect(rebuilt.entries).toHaveLength(2);
+    for (const e of rebuilt.entries) expect(isHistoryFilePath(e.file), e.file).toBe(true);
   });
 });

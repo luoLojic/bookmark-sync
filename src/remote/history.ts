@@ -29,6 +29,26 @@ export function historyFileName(version: number, writtenAt: string, suffix: '.js
 const NAME_RE = /^v(\d{6,})-(.+?)(\.json(?:\.gz)?)$/;
 
 /**
+ * 校验索引里的 file 字段（审计 BUG-13 / L-8）。
+ *
+ * 索引是**远端内容**，而 downloadHistory 会把它直接交给 store.get，
+ * webdav.ts 的 joinUrl 不过滤 `..`。也就是说一份被篡改的 index.json 能让扩展
+ * 带着 Basic 凭据去 GET 同一服务器上的任意路径，再把内容显示、下载给用户。
+ *
+ * 威胁模型确实有限（远端本来就是用户自己的，要么是共享账号、要么服务器已被
+ * 入侵），但校验成本几乎为零：历史文件的名字形状本来就是我们自己定的。
+ *
+ * 只接受 `history/v{6 位以上数字}-{时间戳}.json` 或 `.json.gz`，
+ * 且 history/ 之后不得再出现 `/` —— 顺带挡掉 `..` 与绝对路径。
+ */
+export function isHistoryFilePath(file: string): boolean {
+  if (!file.startsWith(REMOTE_FILES.historyDir)) return false;
+  const name = file.slice(REMOTE_FILES.historyDir.length);
+  if (name === '' || name.includes('/') || name.includes('\\')) return false;
+  return NAME_RE.test(name);
+}
+
+/**
  * 从文件名反解版本号与时间戳，供「刷新索引」重建（FR-15）。
  * 认不出的名字返回 null —— 目录里可能有用户手工放进去的文件。
  */

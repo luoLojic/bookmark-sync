@@ -539,6 +539,9 @@
   "errFirstSync": {
     "message": "首次同步需要选择处理方式。"
   },
+  "errBadHistoryPath": {
+    "message": "历史文件路径不合法，已拒绝下载。索引可能被改动过，请在设置页点「刷新索引」重建。"
+  },
   "errNeedConfirm": {
     "message": "该操作需要先经过确认弹窗。"
   },

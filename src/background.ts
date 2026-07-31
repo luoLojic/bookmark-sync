@@ -18,7 +18,7 @@ import { createWebdavStore } from './remote/webdav.js';
 import { createS3Store } from './remote/s3.js';
 import { isCapsUsable, probeStore, type RemoteStore } from './remote/store.js';
 import { decodeJson, decodeSnapshot, encodeJson, parseHistoryIndex } from './remote/codec.js';
-import { EMPTY_INDEX, estimateIndexBytes, rebuildIndexFromNames } from './remote/history.js';
+import { EMPTY_INDEX, estimateIndexBytes, isHistoryFilePath, rebuildIndexFromNames } from './remote/history.js';
 import { REMOTE_FILES } from './shared/config.js';
 import { acquireLock, clearStaleLock } from './engine/lock.js';
 import { createCancellationGate, type CancellationGate } from './engine/cancellation.js';
@@ -455,6 +455,14 @@ async function refreshHistoryIndex(): Promise<Response> {
 
 /** 下载单份历史快照为文本（FR-16：只查看与下载，不做回滚）。 */
 async function downloadHistory(file: string): Promise<Response> {
+  // ★ file 来自 history/index.json，也就是**远端内容**，而 joinUrl 不过滤 `..`。
+  // 不校验就等于允许一份被篡改的索引指使扩展带着凭据去 GET 服务器上的任意路径，
+  // 再把内容显示给用户（审计 BUG-13 / L-8）。parseHistoryIndex 已经在解析时滤过
+  // 一遍，这里是兜底 —— 请求也可能不经过那条路径。
+  if (!isHistoryFilePath(file)) {
+    log.warn(`拒绝下载不合法的历史路径：${file}`);
+    throw new MisconfiguredError(`历史文件路径不合法：${file}`, { messageKey: 'errBadHistoryPath' });
+  }
   const config = await requireConfigured();
   const store = buildStore(config);
   const got = await store.get(file);

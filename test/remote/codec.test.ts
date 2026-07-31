@@ -144,14 +144,31 @@ describe('parseHistoryIndex（FR-15）', () => {
   });
 
   it('丢弃结构不对的单条，保留其余', () => {
+    const good = 'history/v000001-2026-07-30T10-00-00-000Z.json.gz';
     const index = parseHistoryIndex({
       entries: [
-        { version: 1, file: 'a.json' },
-        { version: 'x', file: 'b.json' },
-        { file: 'c.json' },
+        { version: 1, file: good },
+        { version: 'x', file: 'history/v000002-2026-07-30T10-00-00-000Z.json' },
+        { file: 'history/v000003-2026-07-30T10-00-00-000Z.json' },
         null,
       ],
     });
-    expect(index.entries.map((e) => e.file)).toEqual(['a.json']);
+    expect(index.entries.map((e) => e.file)).toEqual([good]);
+  });
+
+  it('★ file 不是合法历史路径的条目一并丢弃（BUG-13）', () => {
+    // 索引是远端内容，file 会被直接交给 store.get，而 joinUrl 不过滤 `..`。
+    // 不合形状的条目在解析时就该消失，设置页连列都不会列。
+    const index = parseHistoryIndex({
+      entries: [
+        { version: 1, file: '../../../etc/passwd' },
+        { version: 2, file: 'history/../bookmarks.json' },
+        { version: 3, file: 'history/sub/dir/v000003-x.json' },
+        { version: 4, file: '/absolute/path.json' },
+        { version: 5, file: 'bookmarks.json' },
+        { version: 6, file: 'history/v000006-2026-07-30T10-00-00-000Z.json' },
+      ],
+    });
+    expect(index.entries.map((e) => e.version)).toEqual([6]);
   });
 });
