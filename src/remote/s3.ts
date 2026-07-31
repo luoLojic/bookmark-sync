@@ -13,7 +13,7 @@
 
 import { normalizePrefix } from '../shared/config.js';
 import { MisconfiguredError } from '../shared/errors.js';
-import { request } from '../platform/http.js';
+import { isBodylessMethod, request } from '../platform/http.js';
 import { signRequest, uriEncode } from './sigv4.js';
 import { assertOk, type GetResult, type PutOptions, type PutResult, type RemoteStore } from './store.js';
 import type { RemoteHttpDeps } from './webdav.js';
@@ -30,6 +30,9 @@ interface Target {
   /** 签名用的规范路径（逐段编码，不转义分隔用的 /）。 */
   canonicalPath: string;
 }
+
+/** 空载荷。SigV4 要对它算哈希，但不能把它交给 fetch（见 send 的注释）。 */
+const EMPTY_PAYLOAD = new Uint8Array();
 
 export function createS3Store(config: S3Config, deps: S3Deps): RemoteStore {
   const endpoint = config.endpoint.trim();
@@ -81,13 +84,24 @@ export function createS3Store(config: S3Config, deps: S3Deps): RemoteStore {
     return { url: `${base.protocol}//${host}${canonicalPath}${search}`, host, canonicalPath };
   };
 
+  /**
+   * body 分两条路走，这是本文件最容易踩错的地方：
+   *
+   * SigV4 必须对**空载荷**算 SHA-256（GET / DELETE / list 的
+   * `x-amz-content-sha256` 是空串的哈希），所以签名一侧永远要拿到一个
+   * `Uint8Array`；但 GET / HEAD 一侧绝不能把它交给 fetch —— Fetch 规范判定
+   * 的是 `init.body` 字段在不在，零长 ArrayBuffer 也会抛 TypeError。
+   *
+   * 因此：签名用 `payload`，发送用 `hasEntity` 决定是否传。
+   */
   const send = async (
     method: string,
     key: string,
-    body: Uint8Array,
+    body?: Uint8Array,
     extraHeaders: Record<string, string> = {},
     query?: Record<string, string>,
   ) => {
+    const payload = body ?? EMPTY_PAYLOAD;
     const target = targetFor(key, query);
     const signed = signRequest(
       {
@@ -96,7 +110,7 @@ export function createS3Store(config: S3Config, deps: S3Deps): RemoteStore {
         path: target.canonicalPath,
         ...(query === undefined ? {} : { query }),
         headers: extraHeaders,
-        body,
+        body: payload,
       },
       creds,
       now(),
@@ -105,12 +119,17 @@ export function createS3Store(config: S3Config, deps: S3Deps): RemoteStore {
     // 但它必须参与签名，所以只在发送前摘掉。
     const sendHeaders = { ...signed.headers };
     delete sendHeaders['host'];
-    return request({ method, url: target.url, headers: sendHeaders, body }, deps);
+
+    const hasEntity = !isBodylessMethod(method) && payload.length > 0;
+    return request(
+      { method, url: target.url, headers: sendHeaders, ...(hasEntity ? { body: payload } : {}) },
+      deps,
+    );
   };
 
   return {
     async get(path: string): Promise<GetResult | null> {
-      const res = await send('GET', path, new Uint8Array());
+      const res = await send('GET', path);
       if (res.status === 404) return null;
       assertOk(res, { method: 'GET', path });
       const etag = res.headers.get('etag');
@@ -132,7 +151,7 @@ export function createS3Store(config: S3Config, deps: S3Deps): RemoteStore {
     },
 
     async remove(path: string): Promise<void> {
-      const res = await send('DELETE', path, new Uint8Array());
+      const res = await send('DELETE', path);
       // S3 的 DELETE 本身幂等，不存在也返回 204。
       if (res.status === 404) return;
       assertOk(res, { method: 'DELETE', path });
@@ -152,7 +171,7 @@ export function createS3Store(config: S3Config, deps: S3Deps): RemoteStore {
         const query: Record<string, string> = { 'list-type': '2', prefix: listPrefix };
         if (token !== undefined) query['continuation-token'] = token;
 
-        const res = await send('GET', '', new Uint8Array(), {}, query);
+        const res = await send('GET', '', undefined, {}, query);
         if (res.status === 404) return [];
         assertOk(res, { method: 'GET', path: listPrefix });
 

@@ -22,6 +22,7 @@ export type ErrorCode =
   | 'verification'
   | 'protocol'
   | 'busy'
+  | 'remoteSnapshotMissing'
   | 'internal'
   // userAction
   | 'deleteGuard'
@@ -158,6 +159,22 @@ export class BusyError extends FatalError {
   readonly code = 'busy' as const;
   constructor() {
     super('another sync is running', { messageKey: 'errBusy' });
+  }
+}
+
+/**
+ * 本设备有基线，但远端快照文件读不到。
+ *
+ * 这不是「远端把书签删空了」，而是「本设备的基线不属于这个远端」：换了地址、
+ * 改了基础路径、远端文件被删、路径填错一个字符都会走到这里。若按空树参与三方
+ * 合并，所有自上次同步以来未改动过的条目都会被判成「仅远端删」而删掉本地，
+ * 且总数 ≤ 10 时连删除保护都不触发。所以必须中止并让用户判断。
+ */
+export class RemoteSnapshotMissing extends FatalError {
+  readonly code = 'remoteSnapshotMissing' as const;
+  override readonly messageKey = 'errRemoteMissing';
+  constructor() {
+    super('remote snapshot missing while a baseline exists');
   }
 }
 

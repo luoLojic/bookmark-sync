@@ -80,12 +80,15 @@ export interface CommitDeps {
    * 给定三棵树，算出目标树。sync / upload / download 在此分流（方案 4.2）。
    * hasBaseline 用于区分「基线是空树」与「没有基线」—— 后者要走首次同步
    * 的宽松匹配（需求 6.4），两者从 base 本身看不出来。
+   * remoteExists 同理区分「远端文件不存在」与「远端是一棵空树」：前者不是
+   * 「远端删空了」而是「本设备与这个远端从未达成一致」，绝不能按删除处理。
    */
   computeTarget: (input: {
     base: Roots;
     local: Roots;
     remote: Roots;
     hasBaseline: boolean;
+    remoteExists: boolean;
   }) => TargetComputation;
 
   onPhase?: (phase: Phase, done: number, total: number) => void | Promise<void>;
@@ -179,6 +182,7 @@ async function runOnce(deps: CommitDeps, round: number): Promise<Omit<CommitOutc
     local: localRead.roots,
     remote: remoteRoots,
     hasBaseline: storedBaseline !== undefined,
+    remoteExists: remoteRead.snapshot !== null,
   });
 
   const localOps = buildPlan(localRead.roots, target);

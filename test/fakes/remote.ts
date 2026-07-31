@@ -94,6 +94,14 @@ export class FakeRemote {
     return this.files.has(this.normalize(path));
   }
 
+  /**
+   * 直接删掉一个文件，模拟「远端文件被误删 / 换了地址 / 路径填错」。
+   * 这三种情况在协议上都表现为 GET 404，是 C-2 那条数据丢失路径的入口。
+   */
+  unlink(path: string): boolean {
+    return this.files.delete(this.normalize(path));
+  }
+
   paths(): string[] {
     return [...this.files.keys()].sort();
   }
@@ -146,6 +154,13 @@ export class FakeRemote {
     const href = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
     const method = (init?.method ?? 'GET').toUpperCase();
     const path = this.normalize(href);
+
+    // 与真实 fetch 对齐：GET / HEAD 带 body 在构造 Request 时就抛 TypeError，
+    // 判定的是 body 字段在不在而非长度。假实现比真实平台宽松是 C-1 的成因，
+    // 这条断言让同类错误在测试里就暴露，而不是等到真机。
+    if ((method === 'GET' || method === 'HEAD') && init?.body != null) {
+      throw new TypeError(`Failed to execute 'fetch': Request with ${method} method cannot have body.`);
+    }
 
     await this.delay(init?.signal);
 

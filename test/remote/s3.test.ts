@@ -28,6 +28,14 @@ function fakeS3(options: { ifMatch?: boolean; etags?: boolean } = {}) {
   const impl = (async (url: string | URL, init?: RequestInit): Promise<Response> => {
     const href = typeof url === 'string' ? url : url.href;
     const method = (init?.method ?? 'GET').toUpperCase();
+
+    // 真实 fetch 在构造 Request 时就会因此抛 TypeError，判定的是 body 字段
+    // 在不在、而不是长度是否为 0。假实现原先接受 GET 带 body，比真实平台宽松，
+    // 整个 S3 后端不可用的缺陷（C-1）就是从这条缝漏出去的。此处对齐真实行为。
+    if ((method === 'GET' || method === 'HEAD') && init?.body != null) {
+      throw new TypeError(`Failed to execute 'fetch': Request with ${method} method cannot have body.`);
+    }
+
     const headers = Object.fromEntries(
       Object.entries((init?.headers ?? {}) as Record<string, string>).map(([k, v]) => [k.toLowerCase(), v]),
     );

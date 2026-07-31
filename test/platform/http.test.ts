@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { RETRY_BASE_MS, RETRY_MAX_MS } from '../../src/shared/config.js';
 import { AbortedError, NetworkError, RateLimited, ServerError, TimeoutError } from '../../src/shared/errors.js';
-import { backoffMs, isRetryableStatus, parseRetryAfter, request } from '../../src/platform/http.js';
+import {
+  backoffMs,
+  isBodylessMethod,
+  isRetryableStatus,
+  parseRetryAfter,
+  request,
+} from '../../src/platform/http.js';
 
 /** 立即返回的 sleep，把退避等待折叠掉；同时记录被请求的等待时长。 */
 function fakeClock(): { sleep: (ms: number) => Promise<void>; waits: number[] } {
@@ -357,5 +363,76 @@ describe('request — 重试可观测（方案第 11 节日志规范）', () => 
     expect(seen.map((s) => s.attempt)).toEqual([1, 2]);
     expect(seen[0]!.reason).toMatch(/503/);
     expect(seen[1]!.reason).toMatch(/429/);
+  });
+});
+
+describe('request — GET / HEAD 不得带请求体（C-1 的护栏）', () => {
+  // Fetch 规范判定的是 init.body 这个字段在不在，不是长度是否为 0，所以零长
+  // ArrayBuffer 同样会抛 TypeError。这条曾让整个 S3 后端不可用：s3.ts 为了
+  // 给 SigV4 算空载荷哈希，把 new Uint8Array() 一路传到了 fetch。
+  //
+  // 更糟的是 TypeError 会被 classifyFetchError 归成可重试的 NetworkError，
+  // 于是退避重试 5 次约 31 秒后报「网络错误」，与真实原因毫无关联。
+  // 因此这里必须是**不可重试**的编程错误。
+
+  it('GET 带 body 时立刻抛错，且一次 fetch 都不发', async () => {
+    const stub = stubFetch([new Response('never', { status: 200 })]);
+    const clock = fakeClock();
+    await expect(
+      request(
+        { method: 'GET', url: 'https://a.test/x', body: body('') },
+        { timeoutMs: 100, maxRetries: 5, fetchImpl: stub.impl, sleep: clock.sleep },
+      ),
+    ).rejects.toThrow(/不得带请求体/);
+    expect(stub.calls()).toBe(0);
+    // 关键断言：不重试。重试才是原缺陷「31 秒后报网络错误」的来源。
+    expect(clock.waits).toEqual([]);
+  });
+
+  it('空 body 也不放过 —— 长度为 0 不代表字段不存在', async () => {
+    const stub = stubFetch([new Response('never', { status: 200 })]);
+    await expect(
+      request(
+        { method: 'get', url: 'https://a.test/x', body: new Uint8Array() },
+        { timeoutMs: 100, maxRetries: 0, fetchImpl: stub.impl },
+      ),
+    ).rejects.toThrow(/不得带请求体/);
+    expect(stub.calls()).toBe(0);
+  });
+
+  it('HEAD 同样禁止', async () => {
+    const stub = stubFetch([new Response(null, { status: 200 })]);
+    await expect(
+      request(
+        { method: 'HEAD', url: 'https://a.test/x', body: body('x') },
+        { timeoutMs: 100, maxRetries: 0, fetchImpl: stub.impl },
+      ),
+    ).rejects.toThrow(/不得带请求体/);
+    expect(stub.calls()).toBe(0);
+  });
+
+  it('不带 body 的 GET 与带 body 的 PUT / POST 都正常放行', async () => {
+    for (const [method, withBody] of [
+      ['GET', false],
+      ['HEAD', false],
+      ['PUT', true],
+      ['POST', true],
+      ['DELETE', true],
+    ] as const) {
+      const stub = stubFetch([new Response('ok', { status: 200 })]);
+      const res = await request(
+        { method, url: 'https://a.test/x', ...(withBody ? { body: body('payload') } : {}) },
+        { timeoutMs: 100, maxRetries: 0, fetchImpl: stub.impl },
+      );
+      expect(res.status, method).toBe(200);
+      expect(stub.calls(), method).toBe(1);
+    }
+  });
+
+  it('isBodylessMethod 大小写不敏感', () => {
+    for (const m of ['GET', 'get', 'Get', 'HEAD', 'head']) expect(isBodylessMethod(m)).toBe(true);
+    for (const m of ['PUT', 'POST', 'DELETE', 'MKCOL', 'PROPFIND']) {
+      expect(isBodylessMethod(m)).toBe(false);
+    }
   });
 });

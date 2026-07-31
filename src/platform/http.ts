@@ -10,7 +10,14 @@
  */
 
 import { RETRY_BASE_MS, RETRY_MAX_MS } from '../shared/config.js';
-import { AbortedError, NetworkError, RateLimited, ServerError, TimeoutError } from '../shared/errors.js';
+import {
+  AbortedError,
+  InternalError,
+  NetworkError,
+  RateLimited,
+  ServerError,
+  TimeoutError,
+} from '../shared/errors.js';
 
 export interface HttpRequest {
   method: string;
@@ -40,6 +47,25 @@ export interface HttpDeps {
 }
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Fetch 规范禁止带实体的方法。判定看的是 `init.body` 这个**字段是否存在**，
+ * 不是长度是否为 0 —— 传一个零长 ArrayBuffer 同样会抛
+ * `Request with GET/HEAD method cannot have body`。
+ *
+ * 这条曾经让整个 S3 后端不可用：`s3.ts` 的 get / remove / list 都传了
+ * `new Uint8Array()`（签名需要空载荷的哈希），TypeError 又被
+ * `classifyFetchError` 归成可重试的 NetworkError，于是退避重试 5 次约 31 秒后
+ * 报「网络错误」，与真实原因毫无关联。测试没抓到是因为假 fetch 比真 fetch 宽松。
+ *
+ * 所以这里把它变成一条显式断言：违反即是编程错误，按 Fatal 立刻失败，
+ * 绝不伪装成网络问题重试。
+ */
+const BODYLESS_METHODS = new Set(['GET', 'HEAD']);
+
+export function isBodylessMethod(method: string): boolean {
+  return BODYLESS_METHODS.has(method.toUpperCase());
+}
 
 /** 哪些 HTTP 状态值得重试。412 刻意不在其中，见文件头。 */
 export function isRetryableStatus(status: number): boolean {
@@ -89,6 +115,10 @@ function toBodyInit(body: Uint8Array | string | undefined): BodyInit | undefined
  * 重试用尽后抛出对应的 Transient 错误，由 engine 决定是否再来一轮。
  */
 export async function request(req: HttpRequest, deps: HttpDeps): Promise<HttpResponse> {
+  if (req.body !== undefined && isBodylessMethod(req.method)) {
+    throw new InternalError(`${req.method.toUpperCase()} 请求不得带请求体（${req.url}）`);
+  }
+
   const fetchImpl = deps.fetchImpl ?? fetch;
   const sleep = deps.sleep ?? defaultSleep;
   const random = deps.random ?? Math.random;
