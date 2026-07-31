@@ -188,3 +188,37 @@ describe('受管条目挡在中间：reorder 与 remove 都不该整轮失败（
     expect(fake.titlesOf(fake.barId)).toEqual(['甲']);
   });
 });
+
+/**
+ * 只读读树不落盘映射（审计 L-6）。
+ *
+ * getStatus 每次打开 popup 都会读一遍本地树来数条目，而 readLocalTree 会给未映射的
+ * 节点分配 GUID 并落盘 —— 首次打开就是全量约 27KB，未配置远端时也照写。INV-2 允许
+ * 提前写映射，所以不是正确性问题，但一个只读请求带写副作用值得收敛。
+ */
+describe('readLocalTree 的 persist 开关', () => {
+  it('默认落盘 —— 同步路径依赖这一点', async () => {
+    const fake = new FakeBookmarks();
+    fake.seed(fake.barId, { title: 'A', url: 'https://a.test/' });
+    const persisted: GuidMap = {};
+    const table = new MappingTable({}, async (entries) => {
+      Object.assign(persisted, entries);
+    });
+    const read = await readLocalTree(fake, table, guidFactory());
+    expect(read.assigned).toBe(1);
+    expect(Object.keys(persisted)).toHaveLength(1);
+  });
+
+  it('persist: false 时不写 storage，但树照样有 GUID', async () => {
+    const fake = new FakeBookmarks();
+    fake.seed(fake.barId, { title: 'A', url: 'https://a.test/' });
+    const persisted: GuidMap = {};
+    const table = new MappingTable({}, async (entries) => {
+      Object.assign(persisted, entries);
+    });
+    const read = await readLocalTree(fake, table, guidFactory(), { persist: false });
+    expect(read.assigned).toBe(1);
+    expect(read.roots.bar.children[0]!.guid).toMatch(/^b-[0-9a-f]{12}$/);
+    expect(persisted).toEqual({});
+  });
+});

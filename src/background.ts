@@ -134,7 +134,11 @@ async function status(): Promise<StatusPayload> {
 
   let localCounts: StatusPayload['localCounts'] = null;
   try {
-    const read = await readLocalTree(chromeBookmarks, await loadMapping(), makeGuidFactory(randomSource()));
+    // 只读请求不落盘映射（审计 L-6）。这里的 MappingTable 是临时的，
+    // 分配出来的 GUID 只用于数一数条目，下次同步会重新分配并落盘。
+    const read = await readLocalTree(chromeBookmarks, await loadMapping(), makeGuidFactory(randomSource()), {
+      persist: false,
+    });
     localCounts = countRoots(read.roots);
   } catch (error) {
     log.warn('读取本地书签数失败', error);

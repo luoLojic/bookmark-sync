@@ -24,6 +24,7 @@ import {
   AbortedError,
   ConflictError,
   DeleteGuardTripped,
+  ServerError,
   VerificationError,
   type GuardItem,
 } from '../shared/errors.js';
@@ -316,7 +317,18 @@ async function runOnce(deps: CommitDeps, round: number): Promise<Omit<CommitOutc
   abortIfRequested();
   const historyFile = historyFileName(nextVersion, writtenAt, deps.caps.suffix);
   const snapshotBytes = await encodeJson(snapshot, deps.config.compress);
-  await deps.store.put(historyFile, snapshotBytes);
+  // 本轮第一次写。远端目录可能已被删掉或改名，而 ensureContainer 唯一的调用点在
+  // probeStore 里 —— caps 一旦缓存就不再探测，PUT 会一直 409（审计 M-11）。
+  // 不在快路径上无条件 MKCOL：那会让「无改动的定时同步不产生写流量」（FR-14 的
+  // 性能验收项）失效。所以只在真的撞上 409 时重建一次再重试。
+  try {
+    await deps.store.put(historyFile, snapshotBytes);
+  } catch (error) {
+    if (!(error instanceof ServerError) || error.status !== 409) throw error;
+    deps.log?.warn('写入历史快照返回 409，尝试重建远端目录后重试', error);
+    await deps.store.ensureContainer();
+    await deps.store.put(historyFile, snapshotBytes);
+  }
 
   // ── PUT_BOOKMARKS ★ 原子提交点（步骤 6） ─────────────────────────────
   await at('putBookmarks');

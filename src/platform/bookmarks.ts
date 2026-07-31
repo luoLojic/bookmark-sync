@@ -213,6 +213,15 @@ export async function readLocalTree(
   api: BookmarksApi,
   mapping: MappingTable,
   newGuid: (type: 'bookmark' | 'folder') => Guid,
+  /**
+   * persist: false —— 只读场景（popup 每次打开都要数一下本地条目数）不落盘。
+   *
+   * 默认 true，因为同步路径必须落盘：只在内存里分配、等提交成功再写，中途失败后
+   * 下次读树会给同一个书签分配新 GUID，于是它在远端表现为「旧的被删、新的被加」。
+   * 但 getStatus 是只读请求，每次打开 popup 都写一次 map（首次是全量约 27KB），
+   * 未配置远端时也照写 —— 那纯属浪费（审计 L-6）。
+   */
+  opts: { persist?: boolean } = {},
 ): Promise<ReadLocalResult> {
   const resolution = resolveRoots(await api.getTree());
   const pending: GuidMap = {};
@@ -254,7 +263,7 @@ export async function readLocalTree(
     roots[key] = makeFolder(ROOT_GUID[key], source.title, children);
   }
 
-  await mapping.flush(pending);
+  if (opts.persist !== false) await mapping.flush(pending);
 
   return { roots, rootIds: resolution.ids, assigned, warnings: resolution.warnings };
 }

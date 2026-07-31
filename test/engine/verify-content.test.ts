@@ -14,6 +14,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { decodeSnapshot, encodeJson } from '../../src/remote/codec.js';
+import { createWebdavStore } from '../../src/remote/webdav.js';
 import { bk, tree } from '../fixtures/trees.js';
 import { FakeRemote } from '../fakes/remote.js';
 import { createDevice, resetCounters } from './harness.js';
@@ -150,5 +151,48 @@ describe('结果计数如实反映本轮是否写了远端', () => {
     expect(second.result.uploaded).toBe(false);
     // 远端计数取自实际读回的远端树，不是目标树。
     expect(second.result.remote).toEqual({ bookmarks: 1, folders: 0 });
+  });
+});
+
+/**
+ * 远端目录被删掉后能自愈（审计 M-11）。
+ *
+ * ensureContainer 唯一的调用点在 probeStore 里，caps 一旦缓存就不再探测。于是远端
+ * 目录被删除或改名后 MKCOL 不会执行，PUT 一直 409，用户看到「服务器错误」。
+ * 快路径上不能无条件 MKCOL —— 那会让「无改动的定时同步不产生写流量」（FR-14 的性能
+ * 验收项）失效，所以只在真的撞上 409 时重建一次再重试。
+ */
+describe('远端目录不存在时重建后重试', () => {
+  it('★ 本轮第一次写返回 409 时重建目录并最终成功', async () => {
+    const remote = new FakeRemote();
+    const dev = createDevice(remote, {
+      name: 'A',
+      local: tree([bk('b-0000000000a1', '甲', 'https://a.test/')]),
+    });
+
+    // 只让第一次写历史快照返回 409（WebDAV 用它表达「父集合不存在」）。
+    let rejected = false;
+    const fetchImpl = (async (url: string | URL, init?: RequestInit): Promise<Response> => {
+      const method = (init?.method ?? 'GET').toUpperCase();
+      const href = typeof url === 'string' ? url : url.href;
+      if (method === 'PUT' && href.includes('/history/') && !rejected) {
+        rejected = true;
+        return new Response('conflict', { status: 409 });
+      }
+      return remote.fetch(url as string, init);
+    }) as unknown as typeof fetch;
+
+    const store = createWebdavStore(
+      { url: 'https://dav.test/dav', username: 'u', password: 'p', basePath: '/bookmark-sync/' },
+      { timeoutMs: 1000, maxRetries: 0, fetchImpl, sleep: async () => undefined },
+    );
+
+    const outcome = await dev.sync({ kind: 'sync' }, { store });
+
+    expect(rejected).toBe(true);
+    expect(outcome.uploaded).toBe(true);
+    // 重建目录时发过 MKCOL。
+    expect(remote.countRequests('MKCOL')).toBeGreaterThan(0);
+    expect(dev.logs.some((l) => l.includes('409'))).toBe(true);
   });
 });
