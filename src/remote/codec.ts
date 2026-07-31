@@ -10,7 +10,19 @@
  */
 
 import { ProtocolError, FormatVersionTooNew } from '../shared/errors.js';
-import { FORMAT_VERSION, type Snapshot } from '../domain/tree.js';
+import { isValidGuid } from '../domain/guid.js';
+import {
+  FORMAT_VERSION,
+  ROOT_GUID,
+  ROOT_KEYS,
+  makeBookmark,
+  makeFolder,
+  type Folder,
+  type Guid,
+  type Roots,
+  type Snapshot,
+  type TreeNode,
+} from '../domain/tree.js';
 import type { HistoryIndex } from '../shared/types.js';
 
 /** gzip 魔术字节。 */
@@ -79,6 +91,76 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 /**
+ * 递归校验一个节点，并重建成规范形状（审计 H-6）。
+ *
+ * 为什么必须递归校验，而不能像原先那样只看两层再 `as unknown as Roots`：
+ * 后面每一层代码都按类型定义信任这棵树，一个畸形节点会在很远的地方炸开，
+ * 且炸出来的是 TypeError 而不是 ProtocolError ——
+ *   · 「文件夹」缺 children → tree.ts 读 folder.children.length 抛 TypeError；
+ *   · 「书签」缺 url → hash.ts 对 undefined 调 normalize 抛 TypeError；
+ *   · 缺 type → 被当成书签，一路走到 chrome.bookmarks.create({url: ''}) 被拒；
+ *   · guid 重复 → indexRoots 用 Map 去重，后者静默覆盖前者，一整棵子树凭空消失。
+ * 方案第 6 节把「快照格式损坏」归为 ProtocolError（Fatal，报给用户），
+ * 上面这些却都不是 —— 分类红线在这里被绕开了。
+ *
+ * 重建（而不是原样返回）还顺手去掉了多余字段：远端 JSON 里额外的键不该跟着
+ * 进入内存树，否则它们会参与后续的哈希与比较，行为取决于字段顺序。
+ */
+function parseNode(value: unknown, at: string, seen: Set<Guid>): TreeNode {
+  if (!isRecord(value)) throw new ProtocolError(`快照节点 ${at} 不是对象`);
+
+  const guid = value['guid'];
+  if (typeof guid !== 'string' || !isValidGuid(guid)) {
+    throw new ProtocolError(`快照节点 ${at} 的 guid 不合法`);
+  }
+  if (seen.has(guid)) throw new ProtocolError(`快照里 guid ${guid} 重复出现`);
+  seen.add(guid);
+
+  const title = value['title'];
+  // 标题允许为空串（浏览器允许），但必须是字符串。
+  if (typeof title !== 'string') throw new ProtocolError(`快照节点 ${guid} 的 title 不是字符串`);
+
+  const type = value['type'];
+  if (type === 'bookmark') {
+    const url = value['url'];
+    if (typeof url !== 'string' || url === '') {
+      throw new ProtocolError(`快照书签 ${guid} 的 url 不合法`);
+    }
+    return makeBookmark(guid, title, url);
+  }
+  if (type === 'folder') {
+    const children = value['children'];
+    if (!Array.isArray(children)) throw new ProtocolError(`快照文件夹 ${guid} 的 children 不是数组`);
+    return makeFolder(
+      guid,
+      title,
+      children.map((child, i) => parseNode(child, `${guid}[${i}]`, seen)),
+    );
+  }
+  throw new ProtocolError(`快照节点 ${guid} 的 type 不是 bookmark 或 folder`);
+}
+
+/** 校验两棵逻辑根。根自身的 GUID 是固定常量，不接受远端改写（需求 6.5）。 */
+function parseRoots(value: unknown): Roots {
+  if (!isRecord(value)) throw new ProtocolError('快照缺少 roots');
+  const seen = new Set<Guid>();
+  const out = {} as Roots;
+  for (const key of ROOT_KEYS) {
+    const root = value[key];
+    if (!isRecord(root)) throw new ProtocolError(`快照的 roots.${key} 不是对象`);
+    const children = root['children'];
+    if (!Array.isArray(children)) throw new ProtocolError(`快照的 roots.${key}.children 不是数组`);
+    const title = typeof root['title'] === 'string' ? root['title'] : '';
+    out[key] = makeFolder(
+      ROOT_GUID[key],
+      title,
+      children.map((child, i) => parseNode(child, `${key}[${i}]`, seen)),
+    ) as Folder;
+  }
+  return out;
+}
+
+/**
  * 校验并返回快照。
  *
  * formatVersion 高于本扩展支持的版本时抛 FormatVersionTooNew ——
@@ -93,14 +175,7 @@ export function parseSnapshot(value: unknown): Snapshot {
   if (version > FORMAT_VERSION) throw new FormatVersionTooNew(version);
   if (version < FORMAT_VERSION) throw new ProtocolError(`不支持的 formatVersion ${version}`);
 
-  const roots = value['roots'];
-  if (!isRecord(roots)) throw new ProtocolError('快照缺少 roots');
-  for (const key of ['bar', 'other']) {
-    const root = roots[key];
-    if (!isRecord(root) || !Array.isArray(root['children'])) {
-      throw new ProtocolError(`快照的 roots.${key} 结构不正确`);
-    }
-  }
+  const roots = parseRoots(value['roots']);
 
   // 其余字段缺失时补默认值，而不是拒绝整份快照：它们只影响展示与降级校验，
   // 缺一个 writtenBy 不该让用户完全无法同步。
@@ -111,7 +186,7 @@ export function parseSnapshot(value: unknown): Snapshot {
     writtenAt: typeof value['writtenAt'] === 'string' ? value['writtenAt'] : '',
     writtenBy: typeof value['writtenBy'] === 'string' ? value['writtenBy'] : '',
     contentHash: typeof value['contentHash'] === 'string' ? value['contentHash'] : '',
-    roots: roots as unknown as Snapshot['roots'],
+    roots,
   };
   return snapshot;
 }

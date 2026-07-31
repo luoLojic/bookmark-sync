@@ -299,10 +299,18 @@ export function serializeError(e: unknown): SerializedError {
 /**
  * 把任意异常收敛为 AppError。未知异常一律按 Fatal 处理 ——
  * 宁可要求用户重试，也不让未知错误走上清状态的分支。
+ *
+ * ★ 这里刻意**不**把 TypeError 归成 NetworkError。
+ *
+ * fetch 确实把 DNS、连接中断、CORS 一律报成 TypeError，但那些已经由
+ * platform/http.ts 的 classifyFetchError 在 transport 层就地归类了。留一条
+ * 兜底的 TypeError → NetworkError 只会掩盖真正的问题：畸形远端数据引发的
+ * 「读 undefined 的属性」也是 TypeError，被归成瞬时错误后，用户看到的是
+ * 「网络错误」而不是「远端数据格式不正确」，这正是红线三要防的错分类。
+ * 程序性错误按 Fatal 报出去，才有人去修。
  */
 export function toAppError(e: unknown): AppError {
   if (isAppError(e)) return e;
   if (e instanceof DOMException && e.name === 'AbortError') return new AbortedError();
-  if (e instanceof TypeError) return new NetworkError(e.message, { cause: e });
   return new InternalError(e instanceof Error ? e.message : String(e), { cause: e });
 }

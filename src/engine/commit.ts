@@ -240,8 +240,14 @@ async function runOnce(deps: CommitDeps, round: number): Promise<Omit<CommitOutc
   }
 
   // 无变化短路（FR-14 / 方案第 4 节）。
+  //
+  // 同样对远端 roots 重算哈希，不信它自报的 contentHash。FR-16 明确引导用户
+  // 「下载历史文件后用上传覆盖，或手动导入」，手工编辑过的快照里 contentHash
+  // 与 roots 不符并不稀奇；信了它就会跳过三个 PUT，把一份内容不符的快照当成
+  // 「与远端一致」存进基线。下一轮虽能自我纠正，但用户会莫名看到一次「无变化」。
   const remoteUnchanged =
-    remoteRead.snapshot !== null && hashesEqual(targetHash, remoteRead.snapshot.contentHash);
+    remoteRead.snapshot !== null &&
+    hashesEqual(targetHash, computeContentHash(remoteRead.snapshot.roots, deps.hash));
 
   // ── APPLY_LOCAL ─────────────────────────────────────────────────────
   let applied = { created: 0, updated: 0, moved: 0, removed: 0, reordered: 0 };
@@ -390,8 +396,20 @@ async function verifyCommit(
 
   const readBack = await decodeSnapshot(got.bytes);
 
+  // ★ 必须对读回的 roots **重算**哈希，不能比较快照自报的 contentHash 字段。
+  //
+  // 那个字段是本扩展自己写进 JSON 的：只要 JSON 能解析出来，它就必然等于写入
+  // 时的值，这条检查因此永远通过，等于没写。NFR-4 要的是「校验内容哈希，防止
+  // 上传被截断」，能发现的必须包括「JSON 仍然合法但 roots 内容不对」——
+  // 代理改写、服务器端字符集转换、明文模式下数组元素被截掉后仍闭合。
+  // 成本只是一次纯计算，没有额外往返。
+  const actual = computeContentHash(readBack.roots, deps.hash);
+  if (!hashesEqual(actual, written.contentHash)) {
+    throw new VerificationError('写后校验失败：读回内容重算的哈希与写入不一致');
+  }
   if (!hashesEqual(readBack.contentHash, written.contentHash)) {
-    throw new VerificationError('写后校验失败：读回的内容哈希与写入不一致');
+    // 内容对得上但自报字段不对：文件被改写过。仍然拒绝，别把它当基线。
+    throw new VerificationError('写后校验失败：读回的 contentHash 字段与写入不一致');
   }
 
   if (!deps.caps.ifMatch) {
