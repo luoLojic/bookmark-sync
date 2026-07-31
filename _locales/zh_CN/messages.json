@@ -539,6 +539,15 @@
   "errFirstSync": {
     "message": "首次同步需要选择处理方式。"
   },
+  "errNeedConfirm": {
+    "message": "该操作需要先经过确认弹窗。"
+  },
+  "errNeedConfirmGuard": {
+    "message": "定时同步被删除保护拦下，本次没有执行。请打开扩展手动同步，确认是否应用这批删除。"
+  },
+  "errNeedConfirmFirstSync": {
+    "message": "本设备还没有同步过，需要你先选择合并方式。请打开扩展手动同步。"
+  },
   "errUnknown": {
     "message": "未知错误：$1",
     "placeholders": {

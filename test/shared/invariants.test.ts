@@ -99,8 +99,31 @@ describe('H-1：能力缓存的作废必须是删除，不能写哨兵', () => {
   });
 });
 
-describe('红线一：domain 保持纯函数', () => {
-  const forbidden = [
+describe('M-10：覆盖类操作必须由后台校验 confirmed', () => {
+  // 消息协议把 upload / download 定义为必带 confirmed，但原实现完全没读它 ——
+  // 「上传前必须确认」（FR-2 / FR-3）就只由 popup 的调用顺序保证，将来任何新入口
+  // （快捷键、右键菜单）都能无声地跳过确认弹窗直接覆盖。
+  //
+  // 这里只能做静态检查：background.ts 目前还没有可注入的单元测试入口，
+  // 那是审计点出的最大测试空洞，另有任务处理。
+  it('background 的 upload / download 分支拒绝未确认的请求', () => {
+    const bg = files.find((f) => f.rel === 'background.ts');
+    expect(bg).toBeDefined();
+    expect(bg!.code).toMatch(/req\.confirmed !== true/);
+  });
+});
+
+describe('H-3：lastResult 存的是文字而不是 i18n key', () => {
+  // popup 的状态行直接显示 `s.last.error`，存 key 会把 errAuth 这样的裸键摆到
+  // 用户面前（审计 H-7）。
+  it('background 不再把 messageKey 直接写进 lastResult', () => {
+    const bg = files.find((f) => f.rel === 'background.ts')!;
+    expect(bg.code).not.toMatch(/error:\s*serialized\.messageKey/);
+    expect(bg.code).toMatch(/localizeMessage\(/);
+  });
+});
+
+describe('红线一：domain 保持纯函数', () => {  const forbidden = [
     { re: /\bchrome\./, why: 'chrome.* 属于 platform 层' },
     { re: /\bfetch\s*\(/, why: 'fetch 属于 platform/http' },
     { re: /\bDate\.now\s*\(/, why: '时间必须注入' },

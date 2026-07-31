@@ -22,6 +22,7 @@ import { EMPTY_INDEX, estimateIndexBytes, rebuildIndexFromNames } from './remote
 import { REMOTE_FILES } from './shared/config.js';
 import { acquireLock, clearStaleLock } from './engine/lock.js';
 import { createCancellationGate, type CancellationGate } from './engine/cancellation.js';
+import { decideAttention } from './engine/attention.js';
 import { assertBaselineBelongsTo } from './engine/identity.js';
 import { previewOverwrite, runSync, type SyncRequest } from './engine/sync.js';
 import { applySchedule, chromeAlarms, SYNC_ALARM } from './scheduler/alarms.js';
@@ -152,7 +153,20 @@ async function status(): Promise<StatusPayload> {
 /** 当前运行的取消闸门。popup 的取消按钮通过它生效（★ 之后自动失效）。 */
 let currentAbort: CancellationGate | null = null;
 
-async function executeSync(req: SyncRequest): Promise<Response> {
+/**
+ * 执行一次同步。
+ *
+ * interactive 区分「用户点的」与「定时 / 启动触发的」。这不是可选的细节：需要
+ * 确认的两类结果（删除保护、首次同步）走的是 confirm 通道，而定时同步没有人在
+ * 看应答 —— alarm 回调只是 `void executeSync(...)`。原实现于是完全无声：不写
+ * lastResult、不广播、不留任何痕迹，新设备开着定时同步每 30 分钟被
+ * FirstSyncChoiceRequired 拦一次，popup 上永远是「尚未同步」，用户无从判断是没
+ * 触发还是失败了（审计 H-3）。
+ */
+async function executeSync(
+  req: SyncRequest,
+  opts: { interactive?: boolean } = {},
+): Promise<Response> {
   const config = await requireConfigured();
   const runId = randomHex(4);
   const gate = createCancellationGate();
@@ -212,11 +226,12 @@ async function executeSync(req: SyncRequest): Promise<Response> {
     );
 
     await setLastResult({ at: Date.now(), ok: true, kind: req.kind, counts: outcome.result });
+    await setAttention(false);
     broadcast({ t: 'done', result: outcome.result, kind: req.kind });
     log.info(`同步完成，轮次 ${outcome.rounds}，${outcome.uploaded ? '已写远端' : '远端无变化'}`);
     return { ok: true, t: 'done', result: outcome.result };
   } catch (error) {
-    return await handleSyncError(error, req.kind);
+    return await handleSyncError(error, req.kind, opts.interactive !== false);
   } finally {
     currentAbort = null;
     log.clearContext();
@@ -230,9 +245,35 @@ async function executeSync(req: SyncRequest): Promise<Response> {
  *
  * 需要确认的两类（删除保护、首次同步）不是失败，而是「等用户决定」，
  * 因此走 confirm 通道且**不写 lastResult** —— 否则 popup 会显示成上次同步失败。
+ *
+ * 但这只在有人正看着应答时成立。定时 / 启动同步没有接收方，所以那两类结果必须
+ * 换成「留下痕迹」：写 lastResult 让 popup 显示原因，并在扩展图标上打角标
+ * （action 已在 manifest 里声明，不需要新权限；通知需要 notifications 权限，
+ * 属范围扩张，留给用户决定）。
  */
-async function handleSyncError(error: unknown, kind: SyncKind): Promise<Response> {
+async function handleSyncError(error: unknown, kind: SyncKind, interactive: boolean): Promise<Response> {
   const appError = toAppError(error);
+  const serialized = serializeError(appError);
+  const decision = decideAttention({
+    klass: appError.klass,
+    code: appError.code,
+    interactive,
+    ...(serialized.messageKey === undefined ? {} : { fallbackKey: serialized.messageKey }),
+  });
+
+  if (decision.channel === 'record' && appError.klass === 'userAction') {
+    // 定时 / 启动同步被拦下：记下来并打角标，等用户主动打开扩展处理。
+    await setLastResult({
+      at: Date.now(),
+      ok: false,
+      kind,
+      error: localizeMessage(decision.messageKey, serialized.messageArgs) ?? serialized.message,
+    });
+    await setAttention(decision.badge);
+    log.warn(`定时同步需要用户确认：${serialized.code}`);
+    broadcast({ t: 'error', error: serialized });
+    return { ok: false, error: serialized };
+  }
 
   if (appError.code === 'deleteGuard') {
     const detail = (appError as unknown as { detail: ConfirmDetail & Record<string, unknown> }).detail;
@@ -272,14 +313,42 @@ async function handleSyncError(error: unknown, kind: SyncKind): Promise<Response
     };
   }
 
-  const serialized = serializeError(appError);
   // 用户主动取消不算失败，不污染「上次同步」状态。
   if (!(appError instanceof AbortedError)) {
-    await setLastResult({ at: Date.now(), ok: false, kind, error: serialized.messageKey ?? serialized.message });
+    // ★ 存的是**已翻译的**文字，不是 i18n key。popup 的状态行直接显示这个字段
+    // （`s.last.error ?? t('stateError')`），存 key 就会把 errAuth 这样的裸键
+    // 摆到用户面前（审计 H-7）。
+    await setLastResult({
+      at: Date.now(),
+      ok: false,
+      kind,
+      error: localizeMessage(decision.messageKey, serialized.messageArgs) ?? serialized.message,
+    });
   }
   log.error(`同步失败：${serialized.message}`);
   broadcast({ t: 'error', error: serialized });
   return { ok: false, error: serialized };
+}
+
+/**
+ * i18n key → 本地化文字。key 缺失或词条不存在时返回 undefined，让调用方回落到
+ * 原始 message —— 宁可显示一句英文诊断信息，也不要显示一个裸键。
+ */
+function localizeMessage(key: string | undefined, args: string[] | undefined): string | undefined {
+  if (key === undefined) return undefined;
+  const text = chrome.i18n.getMessage(key, args ?? []);
+  return text === '' ? undefined : text;
+}
+
+/** 扩展图标角标：定时同步需要用户介入时打上，成功一次就清掉。 */
+async function setAttention(on: boolean): Promise<void> {
+  try {
+    await chrome.action.setBadgeText({ text: on ? '!' : '' });
+    if (on) await chrome.action.setBadgeBackgroundColor({ color: '#d93025' });
+  } catch (error) {
+    // 角标只是提示，失败不该影响同步结果。
+    log.warn('设置角标失败', error);
+  }
 }
 
 // ── 预览（FR-2 / FR-3） ──────────────────────────────────────────────
@@ -441,10 +510,16 @@ async function handleRequest(req: Request): Promise<Response> {
       }
 
       case 'upload':
-        return await executeSync({ kind: 'upload' });
-
       case 'download':
-        return await executeSync({ kind: 'download' });
+        // ★ 协议里的 confirmed 不是装饰（审计 M-10）。FR-2 / FR-3 要求上传与下载
+        // 必须先经确认弹窗，而原实现完全没读这个字段 —— 那条需求就只由 popup 的
+        // 调用顺序保证，后台毫无守卫，将来任何新入口（快捷键、右键菜单）都能无声
+        // 地跳过确认直接覆盖。
+        if (req.confirmed !== true) {
+          log.warn(`拒绝未经确认的${req.t === 'upload' ? '上传' : '下载'}请求`);
+          return { ok: false, error: serializeError(new MisconfiguredError('缺少确认', { messageKey: 'errNeedConfirm' })) };
+        }
+        return await executeSync({ kind: req.t });
 
       case 'preview':
         return await preview(req.op);
@@ -510,7 +585,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== SYNC_ALARM) return;
   log.info('定时同步触发');
   // 与手动同步竞争时由单实例锁拒绝（NFR-10），这里不做额外判断。
-  void executeSync({ kind: 'sync' });
+  void executeSync({ kind: 'sync' }, { interactive: false });
 });
 
 chrome.runtime.onStartup.addListener(() => {
@@ -526,7 +601,7 @@ chrome.runtime.onStartup.addListener(() => {
     await applySchedule(config, chromeAlarms);
     if (config.syncOnStartup && validateConfig(config).length === 0) {
       log.info('启动同步触发');
-      await executeSync({ kind: 'sync' });
+      await executeSync({ kind: 'sync' }, { interactive: false });
     }
   })();
 });

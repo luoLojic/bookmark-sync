@@ -79,6 +79,10 @@ describe('i18n 语言包无冗余', () => {
         }
         for (const m of source.matchAll(/messageKey:\s*'(\w+)'/g)) keys.add(m[1]!);
         for (const m of source.matchAll(/messageKey\s*=\s*'(\w+)'/g)) keys.add(m[1]!);
+        // 错误文案有时不经 messageKey 字段，而是按错误码在表里挑一条（例如定时
+        // 同步被拦下时换成带行动指引的那一句）。err 前缀的裸字面量也算引用 ——
+        // 这条规则不会放过真正的死文案：没人提到的 key 依然扫不到。
+        for (const m of source.matchAll(/'(err[A-Za-z]\w*)'/g)) keys.add(m[1]!);
       }
     };
     walk(path.join(root, 'src'));
