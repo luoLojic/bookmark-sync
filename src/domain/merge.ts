@@ -190,16 +190,74 @@ export function mergeTrees(input: MergeInput): Roots {
   }
 
   // ── 父解析与循环打破 ──────────────────────────────────────────────
+  //
   // 字段级 parentGuid 判定可能产生循环：本地把 A 移入 B、远端把 B 移入 A 时，
-  // 「本地优先」会同时得到 A.parent=B 与 B.parent=A。若不处理，两棵子树都
-  // 装配不上逻辑根，表现为书签整片消失。
+  // 「本地优先」会同时得到 A.parent=B 与 B.parent=A。若不处理，两棵子树都装配不上
+  // 逻辑根，表现为书签整片消失。
+  //
+  // ★ 只把「病灶」提到逻辑根，不能把所有到不了根的节点都提上去（审计 L-7）。
+  //
+  // 原实现对每个节点独立判断「父能否到达根」，而成环节点的判定结果 false 会被写进
+  // 备忘录；于是挂在 A 下面的正常子节点 C 也被判成不可用，跟着被提到书签栏第一层。
+  // 结果是条目不丢但层级散架 —— 用户看到几十个书签突然全跑到书签栏根下，而且这个
+  // 结果会上传，其它设备跟着散。触发条件是「本地把 A 移入 B、远端把 B 移入 A」这种
+  // 真实的并发编辑。
+  //
+  // 病灶只有两类：父不存在 / 父不是文件夹（断链），以及自己就在环上。把这两类提到
+  // 逻辑根之后，它们的后代自然就能到达根了 —— 因为父子关系没动，只是链的顶端接上了。
+  const rootForNode = (guid: Guid): Guid => {
+    const key = rootKeyIn(lIdx, guid) ?? rootKeyIn(rIdx, guid) ?? rootKeyIn(bIdx, guid) ?? 'bar';
+    return ROOT_GUID[key];
+  };
+
+  const finalParent = new Map<Guid, Guid>();
+  for (const [guid, node] of kept) finalParent.set(guid, node.parentGuid);
+
+  /** 顺着当前 finalParent 往上走一步；到根或断链时返回 undefined。 */
+  const stepUp = (guid: Guid): Guid | undefined => {
+    const parent = finalParent.get(guid)!;
+    if (isRootGuid(parent)) return undefined;
+    return kept.get(parent)?.type === 'folder' ? parent : undefined;
+  };
+
+  // 环检测。每个节点只有一个父，所以这是一张函数图：从任一点出发不断上行，
+  // 要么走到根、要么断链、要么撞回本次路径里的某个节点 —— 后者就是一个环。
+  const onCycle = new Set<Guid>();
+  const settled = new Set<Guid>();
+  for (const start of kept.keys()) {
+    if (settled.has(start)) continue;
+    const path: Guid[] = [];
+    const seenAt = new Map<Guid, number>();
+    let cur: Guid | undefined = start;
+    while (cur !== undefined && !settled.has(cur)) {
+      const at = seenAt.get(cur);
+      if (at !== undefined) {
+        for (let i = at; i < path.length; i++) onCycle.add(path[i]!);
+        break;
+      }
+      seenAt.set(cur, path.length);
+      path.push(cur);
+      cur = stepUp(cur);
+    }
+    for (const g of path) settled.add(g);
+  }
+
+  for (const guid of kept.keys()) {
+    const parent = finalParent.get(guid)!;
+    const linked = isRootGuid(parent) || kept.get(parent)?.type === 'folder';
+    // 断链或自己在环上 —— 提到逻辑根，条目不丢、层级也只在这一处断开。
+    if (!linked || onCycle.has(guid)) finalParent.set(guid, rootForNode(guid));
+  }
+
+  // 兜底再核一遍。理论上此刻每个节点都能到根（病灶都接到根上了），留这一遍是因为
+  // 装配阶段依赖这个前提：一旦不成立，子树会静默消失，那比层级散架严重得多。
   const reachesRoot = new Map<Guid, boolean>();
   const reaches = (guid: Guid, stack: Set<Guid>): boolean => {
     const memo = reachesRoot.get(guid);
     if (memo !== undefined) return memo;
     if (stack.has(guid)) return false; // 成环，不写入备忘录
     stack.add(guid);
-    const parent = kept.get(guid)!.parentGuid;
+    const parent = finalParent.get(guid)!;
     const ok = isRootGuid(parent)
       ? true
       : kept.get(parent)?.type === 'folder'
@@ -209,19 +267,8 @@ export function mergeTrees(input: MergeInput): Roots {
     reachesRoot.set(guid, ok);
     return ok;
   };
-
-  const finalParent = new Map<Guid, Guid>();
-  for (const [guid, node] of kept) {
-    const parent = node.parentGuid;
-    const usable =
-      isRootGuid(parent) || (kept.get(parent)?.type === 'folder' && reaches(parent, new Set()));
-    if (usable) {
-      finalParent.set(guid, parent);
-      continue;
-    }
-    // 兜底：挂到该节点原本所属的逻辑根，条目不丢。
-    const key = rootKeyIn(lIdx, guid) ?? rootKeyIn(rIdx, guid) ?? rootKeyIn(bIdx, guid) ?? 'bar';
-    finalParent.set(guid, ROOT_GUID[key]);
+  for (const guid of kept.keys()) {
+    if (!reaches(guid, new Set())) finalParent.set(guid, rootForNode(guid));
   }
 
   // ── 阶段 C：装配 ──────────────────────────────────────────────────

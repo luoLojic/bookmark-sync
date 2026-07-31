@@ -226,6 +226,28 @@ describe('merge 悬空父与祖先复活', () => {
     expect(p1 === F2 && p2 === F1).toBe(false);
   });
 
+  it('★ 打破循环只提环上的节点，环下面的子树跟着走（审计 L-7）', () => {
+    // 本地把 F1 移入 F2、远端把 F2 移入 F1 —— F1 与 F2 成环。而 F3 与 B1 是挂在
+    // F1 下面的正常子节点，它们的父链只是恰好经过环，本身没有任何问题。
+    //
+    // 原实现对每个节点独立判断「父能否到达根」，成环节点的 false 被写进备忘录，
+    // 于是 F3 与 B1 也被判成不可用、一起提到书签栏第一层。条目不丢，但层级散架：
+    // 用户看到几十个书签突然全跑到书签栏根下，而且这个结果会上传。
+    const base = tree([fd(F1, '甲', [fd(F3, '丙', [bk(B1, '书签')])]), fd(F2, '乙')]);
+    const local = tree([fd(F2, '乙', [fd(F1, '甲', [fd(F3, '丙', [bk(B1, '书签')])])])]);
+    const remote = tree([fd(F1, '甲', [fd(F3, '丙', [bk(B1, '书签')]), fd(F2, '乙')])]);
+
+    const idx = merged(base, local, remote);
+    expect([...idx.keys()].sort()).toEqual([B1, F1, F2, F3].sort());
+    // 环被打破。
+    const p1 = idx.get(F1)!.parentGuid;
+    const p2 = idx.get(F2)!.parentGuid;
+    expect(p1 === F2 && p2 === F1).toBe(false);
+    // ★ 关键：F3 仍在 F1 下，B1 仍在 F3 下 —— 层级没有被打平。
+    expect(idx.get(F3)!.parentGuid).toBe(F1);
+    expect(idx.get(B1)!.parentGuid).toBe(F3);
+  });
+
   it('循环发生在「其他书签」深处时，兜底挂回原所属逻辑根而非书签栏', () => {
     // 兜底必须挑对根：挂错会让条目在两棵树之间凭空搬家，用户看到的是书签
     // 从「其他书签」跑进了「书签栏」。
