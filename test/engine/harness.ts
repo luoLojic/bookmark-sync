@@ -39,6 +39,8 @@ export interface Device {
   readonly phases: Phase[];
   readonly logs: string[];
   baseline(): Snapshot | undefined;
+  /** 模拟设置页的「重置同步状态」：只清基线，映射按 INV-2 保留。 */
+  clearBaseline(): void;
   /** 直接读回本地树（GUID 形式），用于断言收敛。 */
   readLocal(): Promise<Roots>;
   sync(req?: SyncRequest, over?: Partial<EngineDeps>): Promise<CommitOutcome>;
@@ -126,6 +128,9 @@ export function createDevice(remote: FakeRemote, options: DeviceOptions = {}): D
     phases,
     logs,
     baseline: () => baseline,
+    clearBaseline: () => {
+      baseline = undefined;
+    },
     readLocal: async () => (await readLocalTree(bookmarks, mapping, () => {
       throw new Error('读回时不应有未映射节点');
     })).roots,

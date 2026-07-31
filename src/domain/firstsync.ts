@@ -48,11 +48,15 @@ function bookmarkKey(rootKey: RootKey, parentPath: readonly string[], url: strin
 }
 
 /** 按键收集 GUID，保留出现顺序，供重复项两两配对。 */
-function collect(roots: Roots): { folders: Map<string, Guid[]>; bookmarks: Map<string, Guid[]> } {
+function collect(
+  roots: Roots,
+  skip: ReadonlySet<Guid>,
+): { folders: Map<string, Guid[]>; bookmarks: Map<string, Guid[]> } {
   const folders = new Map<string, Guid[]>();
   const bookmarks = new Map<string, Guid[]>();
 
   const push = (m: Map<string, Guid[]>, key: string, guid: Guid): void => {
+    if (skip.has(guid)) return;
     const list = m.get(key);
     if (list === undefined) m.set(key, [guid]);
     else list.push(guid);
@@ -90,16 +94,40 @@ function pairUp(
   return matched;
 }
 
+/** 树里出现过的所有 GUID。 */
+function guidsOf(roots: Roots): Set<Guid> {
+  const out = new Set<Guid>();
+  for (const { node } of walk(roots)) out.add(node.guid);
+  return out;
+}
+
 /**
  * 按需求 6.4 的宽松规则匹配两棵树。
  *
  * 注意匹配是「同层无状态」的：文件夹按完整路径匹配，书签按父路径 + URL 匹配，
  * 两者都不依赖对方的匹配结果。因为路径本身就编码了父链，所以「先匹配父、再
  * 匹配子」的效果自然成立，不需要按层迭代。
+ *
+ * ★ 两棵树共有的 GUID 一律不参与认亲。
+ *
+ * 宽松匹配存在的意义是给「按 GUID 认不出来」的条目找对应关系；GUID 已经相同的
+ * 条目按定义就是同一个实体，三方合并本来就能对上。若不排除它们，一种真实场景会
+ * 出错：用户点过「重置同步状态」——基线被清掉，但映射按 INV-2 保留，本地树携带
+ * 的仍是正确的远端 GUID。此时让它们再认一次亲，只要某个文件夹在两侧路径不同，
+ * 就会把一个本已正确对应的条目错配到另一个远端条目上，凭空造出重复。
+ *
+ * 用「是否出现在对侧树里」判断，而不是「是否本次新分配」：读树本身就会给未映射
+ * 的节点分配并落盘 GUID（getStatus 也会触发），所以「新分配」这个条件在用户点
+ * 同步时几乎总是假的，拿它当门槛会让宽松匹配根本不生效。
  */
 export function matchFirstSync(local: Roots, remote: Roots): FirstSyncMatch {
-  const l = collect(local);
-  const r = collect(remote);
+  const localGuids = guidsOf(local);
+  const remoteGuids = guidsOf(remote);
+  const shared = new Set<Guid>();
+  for (const guid of localGuids) if (remoteGuids.has(guid)) shared.add(guid);
+
+  const l = collect(local, shared);
+  const r = collect(remote, shared);
   const mapping = new Map<Guid, Guid>();
   const matchedFolders = pairUp(l.folders, r.folders, mapping);
   const matchedBookmarks = pairUp(l.bookmarks, r.bookmarks, mapping);

@@ -18,7 +18,7 @@ import { FirstSyncChoiceRequired, RemoteSnapshotMissing } from '../shared/errors
 import { diff, deletedRecords } from '../domain/diff.js';
 import { applyGuidMapping, matchFirstSync } from '../domain/firstsync.js';
 import { mergeTrees } from '../domain/merge.js';
-import { countRoots, emptyRoots, type Roots } from '../domain/tree.js';
+import { countRoots, emptyRoots, type Guid, type Roots } from '../domain/tree.js';
 import { runCommit, type CommitDeps, type CommitOutcome, type TargetComputation } from './commit.js';
 
 /** 首次同步的三种选择（FR-4）。与 ui/messages.ts 的 FirstSyncChoice 一致。 */
@@ -34,10 +34,25 @@ export type EngineDeps = Omit<CommitDeps, 'kind' | 'computeTarget'>;
 /**
  * 首次同步的「合并」：先按需求 6.4 的宽松规则统一 GUID，再以空树为基线三方合并。
  * 不先匹配的话，同一条书签会因两侧 GUID 不同而各留一份。
+ *
+ * 返回匹配结果本身，而不只是合并后的树：调用方必须把它写回映射表与参与
+ * buildPlan 的本地树，否则每条认上亲的条目都会被判成「删掉再建」
+ * （见 commit.ts 的 TargetComputation.guidRemap）。
  */
-export function mergeFirstSync(local: Roots, remote: Roots): Roots {
+export function matchAndMergeFirstSync(
+  local: Roots,
+  remote: Roots,
+): { merged: Roots; remap: Map<Guid, Guid> } {
   const { mapping } = matchFirstSync(local, remote);
-  return mergeTrees({ base: emptyRoots(), local: applyGuidMapping(local, mapping), remote });
+  return {
+    merged: mergeTrees({ base: emptyRoots(), local: applyGuidMapping(local, mapping), remote }),
+    remap: mapping,
+  };
+}
+
+/** 只要合并结果的便捷形式（预览用，不需要映射）。 */
+export function mergeFirstSync(local: Roots, remote: Roots): Roots {
+  return matchAndMergeFirstSync(local, remote).merged;
 }
 
 function isEmptyTree(roots: Roots): boolean {
@@ -79,9 +94,14 @@ function computeTargetFor(req: SyncRequest): CommitDeps['computeTarget'] {
 
         if (!hasBaseline && !isEmptyTree(local) && !isEmptyTree(remote)) {
           // 新设备接入且两侧都有内容 —— 必须让用户选（FR-4）。
+          //
+          // 三个分支都要带上 remap。「用本地」与「用远端」同样吃亏于不认亲：
+          // 前者会把远端整棵树换成本设备的 GUID，其他设备下次同步时看到的是
+          // 「原来的全删了、来了一批新的」，各自重建一遍书签树；后者会把本地
+          // 整棵树删掉重建。认过亲之后，两者都只剩真正的差异。
+          const { merged, remap } = matchAndMergeFirstSync(local, remote);
           const choice = req.firstSyncChoice;
           if (choice === undefined) {
-            const merged = mergeFirstSync(local, remote);
             const lc = countRoots(local);
             const rc = countRoots(remote);
             const mc = countRoots(merged);
@@ -94,10 +114,12 @@ function computeTargetFor(req: SyncRequest): CommitDeps['computeTarget'] {
               mergedFolders: mc.folders,
             });
           }
-          if (choice === 'useLocal') return { target: local, skipGuard: true };
-          if (choice === 'useRemote') return { target: remote, skipGuard: true };
+          if (choice === 'useLocal') {
+            return { target: applyGuidMapping(local, remap), skipGuard: true, guidRemap: remap };
+          }
+          if (choice === 'useRemote') return { target: remote, skipGuard: true, guidRemap: remap };
           // 首次合并没有基线可比，删除保护的分母不成立，跳过（与上传下载同理）。
-          return { target: mergeFirstSync(local, remote), skipGuard: true };
+          return { target: merged, skipGuard: true, guidRemap: remap };
         }
 
         return {

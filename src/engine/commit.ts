@@ -28,6 +28,7 @@ import {
   type GuardItem,
 } from '../shared/errors.js';
 import { countDeletions, deletedRecords, diff } from '../domain/diff.js';
+import { applyGuidMapping } from '../domain/firstsync.js';
 import { checkGuard } from '../domain/guard.js';
 import { computeContentHash, hashesEqual, type HashFn } from '../domain/hash.js';
 import { buildPlan, countRemovals, summarizePlan, type LocalOp } from '../domain/plan.js';
@@ -39,6 +40,7 @@ import {
   indexRoots,
   makeSnapshot,
   totalEntries,
+  type Guid,
   type NodeRecord,
   type RootKey,
   type Roots,
@@ -56,6 +58,18 @@ export interface TargetComputation {
   target: Roots;
   /** 是否跳过删除保护（上传/下载自带确认弹窗，FR-12）。 */
   skipGuard: boolean;
+  /**
+   * 首次同步的宽松匹配结果（需求 6.4）：本地 GUID → 远端 GUID。
+   *
+   * 匹配出来的对应关系必须回到两个地方，否则等于没匹配：
+   *   · 参与 buildPlan 的本地树 —— 用未改写的树去比目标树，每条匹配上的条目
+   *     都是「目标独有 → create」+「当前独有 → remove」，整棵本地书签树被删掉
+   *     重建（dateAdded 归零、favicon 失效、浏览器 ID 全变），而首次合并走
+   *     skipGuard，这批删除不受删除保护约束；
+   *   · 映射表 —— 不落盘的话下一轮读树又会分配本设备自己的 GUID，同一棵树
+   *     每次同步都重建一遍。
+   */
+  guidRemap?: Map<Guid, Guid>;
 }
 
 export interface CommitDeps {
@@ -177,7 +191,7 @@ async function runOnce(deps: CommitDeps, round: number): Promise<Omit<CommitOutc
   abortIfRequested();
 
   const remoteRoots = remoteRead.snapshot?.roots ?? emptyRoots();
-  const { target, skipGuard } = deps.computeTarget({
+  const { target, skipGuard, guidRemap } = deps.computeTarget({
     base: baseline.roots,
     local: localRead.roots,
     remote: remoteRoots,
@@ -185,7 +199,19 @@ async function runOnce(deps: CommitDeps, round: number): Promise<Omit<CommitOutc
     remoteExists: remoteRead.snapshot !== null,
   });
 
-  const localOps = buildPlan(localRead.roots, target);
+  // 宽松匹配认下的亲必须先落到映射表与本地树上，否则每条匹配上的条目都会被
+  // 判成「删掉再建」（见 TargetComputation.guidRemap）。落盘在应用改动之前：
+  // 此刻还没有任何副作用，中途失败下一轮读树直接拿到远端 GUID，照样收敛。
+  const localRoots =
+    guidRemap === undefined || guidRemap.size === 0
+      ? localRead.roots
+      : applyGuidMapping(localRead.roots, guidRemap);
+  if (guidRemap !== undefined && guidRemap.size > 0) {
+    await persistGuidRemap(deps.mapping, guidRemap);
+    deps.log?.info(`首次同步认亲 ${guidRemap.size} 条，映射已落盘`);
+  }
+
+  const localOps = buildPlan(localRoots, target);
   const remoteDelta = diff(remoteRoots, target);
   const targetHash = computeContentHash(target, deps.hash);
 
@@ -194,7 +220,7 @@ async function runOnce(deps: CommitDeps, round: number): Promise<Omit<CommitOutc
     await at('guard');
     const verdict = checkGuard({
       localDeletes: countRemovals(localOps),
-      localTotal: totalEntries(localRead.roots),
+      localTotal: totalEntries(localRoots),
       remoteDeletes: countDeletions(remoteDelta),
       remoteTotal: totalEntries(remoteRoots),
       countThreshold: deps.config.deleteGuardCount,
@@ -208,7 +234,7 @@ async function runOnce(deps: CommitDeps, round: number): Promise<Omit<CommitOutc
         localTotal: verdict.local.total,
         remoteDeletes: verdict.remote.deletes,
         remoteTotal: verdict.remote.total,
-        ...collectGuardItems(verdict.side, localRead.roots, localOps, remoteDelta),
+        ...collectGuardItems(verdict.side, localRoots, localOps, remoteDelta),
       });
     }
   }
@@ -301,6 +327,29 @@ async function runOnce(deps: CommitDeps, round: number): Promise<Omit<CommitOutc
 }
 
 // ── 各步骤实现 ────────────────────────────────────────────────────────
+
+/**
+ * 把宽松匹配的结果写回映射表（需求 6.4：「匹配上的条目建立 GUID 映射」）。
+ *
+ * 映射表记的是「浏览器书签 ID → GUID」，而匹配给出的是「本地 GUID → 远端
+ * GUID」，所以要先反查出那条浏览器 ID。被改的都是本次读树刚分配的条目，它们
+ * 的旧 GUID 还没被任何远端快照引用过，因此这不是 INV-2 意义上的「删映射」，
+ * 而是把一个刚出生的临时编号纠正成公共编号。
+ *
+ * 一次 flush 写完，不逐条落盘 —— 首次同步动辄几百条，逐条写是 O(n²) 字节量。
+ */
+async function persistGuidRemap(mapping: MappingTable, remap: Map<Guid, Guid>): Promise<void> {
+  const entries: Record<string, Guid> = {};
+  for (const [local, remote] of remap) {
+    if (local === remote) continue;
+    const localId = mapping.localIdOf(local);
+    // 查不到说明这个 GUID 不来自本地树（理论上不会发生），跳过比猜一个 ID 安全。
+    if (localId === undefined) continue;
+    mapping.remember(localId, remote);
+    entries[localId] = remote;
+  }
+  await mapping.flush(entries);
+}
 
 interface RemoteRead {
   snapshot: Snapshot | null;
