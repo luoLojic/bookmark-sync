@@ -268,13 +268,40 @@ export interface ApplyContext {
   onProgress?: (done: number, total: number) => void;
 }
 
+export interface SkippedOp {
+  kind: LocalOp['kind'];
+  guid: Guid;
+  title?: string;
+  url?: string;
+  reason: string;
+}
+
 export interface ApplyResult {
   created: number;
   updated: number;
   moved: number;
   removed: number;
   reordered: number;
+  /**
+   * 被跳过的操作。空数组是常态。
+   *
+   * 为什么需要「跳过」：INV-4 的「本次失败、下次从头重来即收敛」有个隐含前提 ——
+   * 失败是瞬时的。而书签 API 的失败全是确定性的：远端快照里有一条浏览器拒绝的
+   * URL，下一轮算出的计划完全相同，会在同一条操作上再次失败，同步从此永久卡死
+   * （审计 H-8）。同理，受管环境里被过滤掉的策略条目会让删除非空文件夹失败
+   * （审计 M-12）。这两类都只影响一个条目，不该让整轮同步停摆。
+   */
+  skipped: SkippedOp[];
 }
+
+/**
+ * 计划本身或映射有问题（父不存在、GUID 没映射、reorder 的子项对不上）。
+ *
+ * 与「浏览器拒绝了这次调用」严格分开：前者是我们自己的缺陷，必须抛出去；
+ * 后者可能只是一条 URL 不合法或一个受管子项挡着，跳过它比让整轮同步永久卡死好。
+ * 靠类型区分而不是靠错误文字 —— 浏览器的报错措辞会随版本和语言变。
+ */
+class PlanError extends Error {}
 
 function rootKeyOfGuid(guid: Guid): RootKey | null {
   if (guid === ROOT_GUID.bar) return 'bar';
@@ -287,7 +314,7 @@ function localIdFor(guid: Guid, ctx: ApplyContext): string {
   const rootKey = rootKeyOfGuid(guid);
   if (rootKey !== null) return ctx.rootIds[rootKey];
   const localId = ctx.mapping.localIdOf(guid);
-  if (localId === undefined) throw new Error(`bookmarks: GUID ${guid} 没有对应的本地 ID`);
+  if (localId === undefined) throw new PlanError(`bookmarks: GUID ${guid} 没有对应的本地 ID`);
   return localId;
 }
 
@@ -337,11 +364,72 @@ export async function applyLocalPlan(
   ops: readonly LocalOp[],
   ctx: ApplyContext,
 ): Promise<ApplyResult> {
-  const result: ApplyResult = { created: 0, updated: 0, moved: 0, removed: 0, reordered: 0 };
+  const result: ApplyResult = { created: 0, updated: 0, moved: 0, removed: 0, reordered: 0, skipped: [] };
   const counts = new ChildCounts(api);
 
   for (let i = 0; i < ops.length; i++) {
     const op = ops[i]!;
+    try {
+      await applyOne(api, op, ctx, counts, result);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      if (!(error instanceof PlanError) && isSkippable(op)) {
+        // 确定性失败，且只影响这一个条目：记下来继续，别让整轮同步停摆。
+        result.skipped.push({ ...describeOp(op), reason });
+      } else {
+        // 其余失败说明计划本身有问题（父不存在、GUID 没映射……），必须抛出。
+        // 但要带上是哪一条 —— 原先的报错只有「未知错误：Invalid URL」，
+        // 在 900 条的计划里等于没有信息。
+        throw new Error(`bookmarks: ${describeOpText(op)} 失败：${reason}`, { cause: error });
+      }
+    }
+    ctx.onProgress?.(i + 1, ops.length);
+  }
+
+  return result;
+}
+
+/**
+ * 哪些操作的失败可以跳过。
+ *
+ * create 书签 —— 浏览器拒绝这条 URL（空、被禁的 scheme、超长）。文件夹的 create
+ *   不在内：它没有 URL，失败一定是父不存在之类的计划问题。
+ * remove —— plan.ts 保证子先于父，此时文件夹仍非空只能是浏览器里有我们看不见的
+ *   子项（受管条目被 convert 过滤掉了），或者用户正在同步过程中手改书签。
+ *   两种都会在下一轮重新合并，不该让本轮失败。
+ *
+ * update / move / reorder 一律抛出：它们对应的节点本来就存在，失败意味着计划或
+ * 映射有误，静默跳过会把真正的缺陷藏起来。
+ */
+function isSkippable(op: LocalOp): boolean {
+  if (op.kind === 'create') return op.type === 'bookmark';
+  return op.kind === 'remove';
+}
+
+function describeOp(op: LocalOp): { kind: LocalOp['kind']; guid: Guid; title?: string; url?: string } {
+  const guid = op.kind === 'reorder' ? op.parentGuid : op.guid;
+  const out: { kind: LocalOp['kind']; guid: Guid; title?: string; url?: string } = { kind: op.kind, guid };
+  if ('title' in op && op.title !== undefined) out.title = op.title;
+  if ('url' in op && op.url !== undefined) out.url = op.url;
+  return out;
+}
+
+function describeOpText(op: LocalOp): string {
+  const d = describeOp(op);
+  const parts = [`${d.kind} ${d.guid}`];
+  if (d.title !== undefined) parts.push(`「${d.title}」`);
+  if (d.url !== undefined) parts.push(d.url);
+  return parts.join(' ');
+}
+
+async function applyOne(
+  api: BookmarksApi,
+  op: LocalOp,
+  ctx: ApplyContext,
+  counts: ChildCounts,
+  result: ApplyResult,
+): Promise<void> {
+  {
     switch (op.kind) {
       case 'create': {
         const parentId = localIdFor(op.parentGuid, ctx);
@@ -383,7 +471,9 @@ export async function applyLocalPlan(
 
       case 'remove': {
         // 用 remove 而非 removeTree：plan.ts 保证子先于父，若此时文件夹非空
-        // 说明计划有误，让浏览器直接报错比静默删掉整棵子树安全。
+        // 说明浏览器里还有我们看不见的子项（受管条目被过滤掉了）或用户正在
+        // 手改书签 —— 让浏览器直接报错比静默删掉整棵子树安全，上层按可跳过
+        // 处理（见 isSkippable）。
         await api.remove(localIdFor(op.guid, ctx));
         counts.invalidateAll();
         result.removed++;
@@ -397,10 +487,7 @@ export async function applyLocalPlan(
         break;
       }
     }
-    ctx.onProgress?.(i + 1, ops.length);
   }
-
-  return result;
 }
 
 /**
@@ -420,15 +507,27 @@ async function reorderChildren(
   const current = (await api.getChildren(parentId)).map((c) => c.id);
   const want = childGuids.map((guid) => localIdFor(guid, ctx));
 
-  // 与 domain 的 applyPlan 一样严格：childGuids 必须正好是当前子项的一个排列。
-  // 不符说明计划有误，静默「顺手移动」会把错误藏起来。
-  if (want.length !== current.length || new Set(want).size !== want.length || want.some((id) => !current.includes(id))) {
-    throw new Error(`bookmarks: reorder 的子项与 ${parentId} 的实际子项不符`);
+  // want 必须无重复、且每一项都确实是这个父的子项 —— 不符说明计划或映射有误，
+  // 静默「顺手移动」会把错误藏起来。
+  if (new Set(want).size !== want.length || want.some((id) => !current.includes(id))) {
+    throw new PlanError(`bookmarks: reorder 的子项与 ${parentId} 的实际子项不符`);
   }
+
+  // ★ 不再要求 want 与 current 长度相等（审计 M-12）。
+  //
+  // convert() 会把企业策略下发的条目（unmodifiable）从本地树里摘掉，可应用阶段
+  // 面对的是**真实**的浏览器树：父目录里只要有一个被过滤掉的子项，长度就永远
+  // 对不上，于是整轮同步在这里抛错，报错信息还指不到真实原因。用户在同步过程中
+  // 手动加了一条书签也是同样的表现。
+  //
+  // 放宽之后，我们只负责把认识的那些排成目标顺序；不认识的子项留在原处，会被
+  // 挤到前面。这在受管环境里是可接受的取舍 —— 那些条目本来就不受我们支配。
+  const known = new Set(want);
+  const currentKnown = current.filter((id) => known.has(id));
 
   // 跳过已经就位的前缀。
   let start = 0;
-  while (start < want.length && current[start] === want[start]) start++;
+  while (start < want.length && currentKnown[start] === want[start]) start++;
 
   for (let i = start; i < want.length; i++) {
     await api.move(want[i]!, { parentId });

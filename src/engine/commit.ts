@@ -49,7 +49,7 @@ import {
 import { decodeSnapshot, encodeJson, parseHistoryIndex } from '../remote/codec.js';
 import { EMPTY_INDEX, appendToIndex, historyFileName } from '../remote/history.js';
 import type { RemoteStore } from '../remote/store.js';
-import { applyLocalPlan, readLocalTree, type BookmarksApi, type MappingTable } from '../platform/bookmarks.js';
+import { applyLocalPlan, readLocalTree, type ApplyResult, type BookmarksApi, type MappingTable } from '../platform/bookmarks.js';
 import type { Config, HistoryIndex, Phase, RemoteCaps, ResultCounts, SyncKind } from '../shared/types.js';
 
 /** 目标树的算法（方案 4.2：三种操作复用同一状态机，只换 MERGE 阶段的产物）。 */
@@ -260,7 +260,7 @@ async function runOnce(deps: CommitDeps, round: number): Promise<Omit<CommitOutc
     hashesEqual(targetHash, computeContentHash(remoteRead.snapshot.roots, deps.hash));
 
   // ── APPLY_LOCAL ─────────────────────────────────────────────────────
-  let applied = { created: 0, updated: 0, moved: 0, removed: 0, reordered: 0 };
+  let applied: ApplyResult = { created: 0, updated: 0, moved: 0, removed: 0, reordered: 0, skipped: [] };
   if (localOps.length > 0) {
     await at('applyLocal', 0, localOps.length);
     abortIfRequested();
@@ -275,6 +275,13 @@ async function runOnce(deps: CommitDeps, round: number): Promise<Omit<CommitOutc
       },
     });
     deps.log?.info('本地改动已应用', summarizePlan(localOps));
+    for (const skip of applied.skipped) {
+      // 确定性失败被跳过（浏览器拒绝的 URL、受管子项挡住的删除）。必须留痕：
+      // 这一条会在此后每一轮里重复被跳过，日志是用户唯一的线索（审计 H-8）。
+      deps.log?.warn(
+        `跳过一条本地改动：${skip.kind} ${skip.title ?? skip.guid}${skip.url === undefined ? '' : ` (${skip.url})`} —— ${skip.reason}`,
+      );
+    }
   }
 
   const nextVersion = (remoteRead.snapshot?.version ?? 0) + 1;

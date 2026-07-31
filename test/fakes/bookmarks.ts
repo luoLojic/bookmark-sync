@@ -187,6 +187,10 @@ export class FakeBookmarks implements BookmarksApi {
     if (arg.index !== undefined && (arg.index < 0 || arg.index > parent.children.length)) {
       throw new Error('Index out of bounds.');
     }
+    // 真实 API 会拒绝解析不出来的 URL（空串首当其冲）。假实现原先照单全收，
+    // 于是「远端快照里有一条浏览器不接受的书签 → 同步永久卡死」这条路径
+    // （审计 H-8）在测试里根本走不到。
+    if (arg.url !== undefined) assertValidUrl(arg.url);
     const spec: { title: string; url?: string } = { title: arg.title };
     if (arg.url !== undefined) spec.url = arg.url;
     const id = this.insert(arg.parentId, spec, arg.index);
@@ -200,6 +204,7 @@ export class FakeBookmarks implements BookmarksApi {
     if (changes.title !== undefined) entry.title = changes.title;
     if (changes.url !== undefined) {
       if (entry.url === undefined) throw new Error("Can't set URL of a folder.");
+      assertValidUrl(changes.url);
       entry.url = changes.url;
     }
     return this.toNode(entry, false);
@@ -246,6 +251,19 @@ export class FakeBookmarks implements BookmarksApi {
     const parent = this.require(entry.parentId);
     parent.children.splice(parent.children.indexOf(id), 1);
     this.entries.delete(id);
+  }
+}
+
+/**
+ * 真实 chrome.bookmarks 会拒绝解析不出来的 URL，报「Invalid URL」。
+ * 用 new URL() 当判据：它接受 javascript: 与 chrome:// 这类合法书签，
+ * 拒绝空串与相对路径，与浏览器的行为足够接近。
+ */
+function assertValidUrl(url: string): void {
+  try {
+    new URL(url);
+  } catch {
+    throw new Error(`Invalid URL: ${JSON.stringify(url)}`);
   }
 }
 

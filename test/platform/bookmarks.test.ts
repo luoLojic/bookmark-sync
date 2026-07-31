@@ -381,16 +381,24 @@ describe('applyLocalPlan — 严格性与映射时机', () => {
     ).rejects.toThrow(/实际子项不符/);
   });
 
-  it('删除非空文件夹时由浏览器报错（不静默删整棵子树）', async () => {
+  it('删除非空文件夹时不静默删整棵子树 —— 记为跳过，子项保持原样', async () => {
+    // plan.ts 保证子先于父，所以走到这里说明浏览器里还有我们看不见的子项
+    // （受管条目被 convert 过滤掉了）或用户正在手改书签。删不掉是对的，但也
+    // 不该让整轮同步失败并永久卡在这一条上（审计 M-12 / H-8）。
     const current = tree([fd('f-000000000001', '甲', [bk('b-000000000001', 'A', 'https://a.test/')])]);
     const fake = new FakeBookmarks();
     const { table } = mappingWithLog(plantRoots(fake, current));
-    await expect(
-      applyLocalPlan(fake, [{ kind: 'remove', guid: 'f-000000000001' }], {
-        mapping: table,
-        rootIds: { bar: fake.barId, other: fake.otherId },
-      }),
-    ).rejects.toThrow(/non-empty/i);
+    const result = await applyLocalPlan(fake, [{ kind: 'remove', guid: 'f-000000000001' }], {
+      mapping: table,
+      rootIds: { bar: fake.barId, other: fake.otherId },
+    });
+
+    expect(result.removed).toBe(0);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]).toMatchObject({ kind: 'remove', guid: 'f-000000000001' });
+    expect(result.skipped[0]!.reason).toMatch(/non-empty/i);
+    // 子树完好无损。
+    expect(fake.titlesOf(fake.barId)).toEqual(['甲']);
   });
 
   it('逐条上报进度', async () => {
