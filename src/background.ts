@@ -21,6 +21,7 @@ import { decodeJson, decodeSnapshot, encodeJson, parseHistoryIndex } from './rem
 import { EMPTY_INDEX, estimateIndexBytes, rebuildIndexFromNames } from './remote/history.js';
 import { REMOTE_FILES } from './shared/config.js';
 import { acquireLock, clearStaleLock } from './engine/lock.js';
+import { createCancellationGate, type CancellationGate } from './engine/cancellation.js';
 import { assertBaselineBelongsTo } from './engine/identity.js';
 import { previewOverwrite, runSync, type SyncRequest } from './engine/sync.js';
 import { applySchedule, chromeAlarms, SYNC_ALARM } from './scheduler/alarms.js';
@@ -148,20 +149,20 @@ async function status(): Promise<StatusPayload> {
 
 // ── 同步执行 ─────────────────────────────────────────────────────────
 
-/** 当前运行的取消控制器。popup 的取消按钮通过它生效。 */
-let currentAbort: AbortController | null = null;
+/** 当前运行的取消闸门。popup 的取消按钮通过它生效（★ 之后自动失效）。 */
+let currentAbort: CancellationGate | null = null;
 
 async function executeSync(req: SyncRequest): Promise<Response> {
   const config = await requireConfigured();
   const runId = randomHex(4);
-  const abort = new AbortController();
+  const gate = createCancellationGate();
 
   const handle = await acquireLock(req.kind, runId, {
     store: { getSyncState, setSyncState: (s) => import('./platform/storage.js').then((m) => m.setSyncState(s)), clearSyncState },
     now: () => Date.now(),
     onStale: (stale) => log.warn(`清除僵死标记 runId=${stale.runId} phase=${stale.phase}`),
   });
-  currentAbort = abort;
+  currentAbort = gate;
   log.setContext({ runId, phase: 'read' });
 
   try {
@@ -178,7 +179,8 @@ async function executeSync(req: SyncRequest): Promise<Response> {
       });
     }
 
-    const store = buildStore(config, abort.signal);
+    // ★ 之后 gate.seal() 会切断这个信号，见 engine/cancellation.ts。
+    const store = buildStore(config, gate.httpSignal);
     const caps = await ensureCaps(config, store);
     const mapping = await loadMapping();
 
@@ -198,7 +200,8 @@ async function executeSync(req: SyncRequest): Promise<Response> {
         // 由 engine/commit.ts 在远端提交成功后调用。基线与远端指纹一起落盘，
         // 上传/下载因此能把绑定改到新远端。
         saveBaseline: (snap) => setBaseline(snap, identity),
-        signal: abort.signal,
+        signal: gate.userSignal,
+        sealCancellation: () => gate.seal(),
         log: { info: (m, ...a) => log.info(m, ...a), warn: (m, ...a) => log.warn(m, ...a) },
         onPhase: (phase, done, total) => {
           log.setContext({ phase });
@@ -448,7 +451,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
       case 'cancel':
         // ★ 之后引擎会忽略取消，这里只负责发出信号（方案 4 要点 4）。
-        currentAbort?.abort();
+        currentAbort?.cancel();
         log.info('用户请求取消');
         return { ok: true, t: 'void' };
 

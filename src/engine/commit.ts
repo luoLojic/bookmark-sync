@@ -108,6 +108,16 @@ export interface CommitDeps {
   onPhase?: (phase: Phase, done: number, total: number) => void | Promise<void>;
   log?: { info: (m: string, ...a: unknown[]) => void; warn: (m: string, ...a: unknown[]) => void };
   signal?: AbortSignal;
+  /**
+   * ★ 原子提交点成功后调用，解除取消对网络层的传导（方案 4 要点 4）。
+   *
+   * 只把 abortIfRequested() 停在 ★ 之前是不够的：transport 拿的是同一个
+   * signal，platform/http.ts 每次尝试开始时都查 aborted，于是 VERIFY 的 GET
+   * 仍会被打断，AbortedError 不属于 runCommit 会重试的两类，WRITE_BASELINE
+   * 直接被跳过 —— INV-1 最危险的「远端已提交、基线未写」窗口被人为延长。
+   * 具体实现见 engine/cancellation.ts。
+   */
+  sealCancellation?: () => void;
 
   /** 崩溃注入（方案 7.4）：在指定阶段开始处抛错。仅测试使用。 */
   crashAfter?: Phase;
@@ -307,6 +317,11 @@ async function runOnce(deps: CommitDeps, round: number): Promise<Omit<CommitOutc
     putOpts.ifMatch = remoteRead.etag;
   }
   const put = await deps.store.put(path, snapshotBytes, putOpts);
+
+  // ★ 已成功。从这一刻起，取消不得再影响任何一步 —— 包括网络层。
+  // 引擎自己的检查点到此为止（下面不再有 abortIfRequested），但 transport 还
+  // 攥着同一个 signal，必须显式解除，否则 VERIFY 的 GET 会被打断。
+  deps.sealCancellation?.();
 
   // ── VERIFY（步骤 7） ────────────────────────────────────────────────
   // 此后不再检查取消：★ 已经成功，必须走到终态（方案 4 要点 4）。
