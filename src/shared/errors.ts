@@ -23,6 +23,7 @@ export type ErrorCode =
   | 'protocol'
   | 'busy'
   | 'remoteSnapshotMissing'
+  | 'remoteChanged'
   | 'internal'
   // userAction
   | 'deleteGuard'
@@ -175,6 +176,27 @@ export class RemoteSnapshotMissing extends FatalError {
   override readonly messageKey = 'errRemoteMissing';
   constructor() {
     super('remote snapshot missing while a baseline exists');
+  }
+}
+
+/**
+ * 远端配置已换过地方，本设备的基线属于旧远端。
+ *
+ * 与 RemoteSnapshotMissing 互补：那条拦的是「新远端什么都没有」，这条拦的是
+ * 「新远端自己有一份别的快照」。后者更隐蔽 —— 三方合并会拿旧远端的基线去比
+ * 新远端的内容，凡是「基线有、本地未改、新远端没有」的条目都被判成远端删除，
+ * 反过来新远端独有的条目又会在下一轮被本地判成删除。两侧都产生凭空的删除，
+ * 而删除保护要求条数与比例同时超标才拦得住。
+ *
+ * 只拦双向同步。上传与下载的目标树不取自基线（分别是本地树与远端树），因此
+ * 它们既安全、又正好是用户重新绑定远端的出口：提交成功后基线会连同新指纹一起
+ * 落盘。消息文案要把这两条出路讲清楚。
+ */
+export class RemoteChanged extends FatalError {
+  readonly code = 'remoteChanged' as const;
+  override readonly messageKey = 'errRemoteChanged';
+  constructor() {
+    super('baseline belongs to a different remote');
   }
 }
 

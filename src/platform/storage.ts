@@ -17,6 +17,8 @@ export const K = {
   cfg: 'cfg',
   caps: 'caps',
   baseline: 'baseline',
+  /** 基线属于哪个远端（shared/config.ts 的 remoteIdentity）。见 setBaseline。 */
+  baselineRemote: 'baselineRemote',
   map: 'map',
   syncState: 'syncState',
   lastResult: 'lastResult',
@@ -109,6 +111,18 @@ export async function setCaps(caps: RemoteCaps): Promise<void> {
   await area.set({ [K.caps]: caps });
 }
 
+/**
+ * 作废能力探测结果。
+ *
+ * ★ 必须是删除，不能写一条 ifMatch:false 的「占位」记录：ensureCaps 只按
+ * suffix 判断缓存是否可用，占位记录在它眼里是完全有效的缓存，于是条件写永久
+ * 停在降级模式，且 ensureContainer（唯一调用点在 probeStore 里）再也不会跑，
+ * 换到新的 WebDAV 目录后 MKCOL 不执行，PUT 直接 409。
+ */
+export async function clearCaps(): Promise<void> {
+  await area.remove([K.caps]);
+}
+
 // ── baseline（INV-1） ────────────────────────────────────────────────
 
 export async function getBaseline(): Promise<Snapshot | undefined> {
@@ -118,9 +132,26 @@ export async function getBaseline(): Promise<Snapshot | undefined> {
 /**
  * ★ 唯一合法调用点：engine/commit.ts 的 WRITE_BASELINE 终态。
  * 任何其他调用点都是 INV-1 违规，代码评审必查。
+ *
+ * remoteIdentity 与基线在同一次 set 里落盘（storage.local 的单次 set 是原子的）。
+ * 分两次写会留下「基线已是新远端的、指纹还是旧远端的」这种中间态 —— 那比没有
+ * 指纹更危险，因为它会让校验放行一个属于别处的基线。
  */
-export async function setBaseline(snap: Snapshot): Promise<void> {
-  await area.set({ [K.baseline]: snap });
+export async function setBaseline(snap: Snapshot, remoteIdentity: string): Promise<void> {
+  await area.set({ [K.baseline]: snap, [K.baselineRemote]: remoteIdentity });
+}
+
+/** 基线所属远端的指纹。undefined = 记录基线时还没有这个字段（旧版本升级上来）。 */
+export async function getBaselineRemote(): Promise<string | undefined> {
+  return readKey<string>(K.baselineRemote);
+}
+
+/**
+ * 补记基线所属的远端。仅用于旧版本升级：那时基线已存在但没有指纹，
+ * 只能认定它属于当前配置的远端 —— 别处不该调用。
+ */
+export async function adoptBaselineRemote(remoteIdentity: string): Promise<void> {
+  await area.set({ [K.baselineRemote]: remoteIdentity });
 }
 
 /**
@@ -128,7 +159,7 @@ export async function setBaseline(snap: Snapshot): Promise<void> {
  * 映射表不受影响（INV-2：只增不减）。
  */
 export async function clearBaseline(): Promise<void> {
-  await area.remove([K.baseline]);
+  await area.remove([K.baseline, K.baselineRemote]);
 }
 
 // ── map（INV-2：只增不减） ───────────────────────────────────────────
@@ -203,5 +234,5 @@ export async function resetSyncState(): Promise<void> {
 
 /** 完全重置：清空基线、映射、配置。 */
 export async function resetAll(): Promise<void> {
-  await area.remove([K.baseline, K.map, K.syncState, K.cfg, K.caps, K.lastResult]);
+  await area.remove([K.baseline, K.baselineRemote, K.map, K.syncState, K.cfg, K.caps, K.lastResult]);
 }

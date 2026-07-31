@@ -43,7 +43,7 @@ describe('storage schema', () => {
     const cfg = await getConfig();
     await setConfig({ ...cfg, deviceName: 'Chrome-test' });
     await mergeMap({ '1': 'b-one' });
-    await setBaseline(emptySnapshot());
+    await setBaseline(emptySnapshot(), 'remote-a');
     await setSyncState({
       running: true,
       startedAt: 1,
@@ -61,7 +61,7 @@ describe('storage schema', () => {
 
   it('complete reset clears local state and restores config defaults', async () => {
     await mergeMap({ '1': 'b-one' });
-    await setBaseline(emptySnapshot());
+    await setBaseline(emptySnapshot(), 'remote-a');
     await resetAll();
     expect(await getMap()).toEqual({});
     expect(await getBaseline()).toBeUndefined();

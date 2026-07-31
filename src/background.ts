@@ -6,7 +6,7 @@
  * 一旦在这里加「如果……就跳过某步」，方案 1.2 的分层就破了。
  */
 
-import { STALE_SYNC_MS, validateConfig } from './shared/config.js';
+import { STALE_SYNC_MS, remoteIdentity, validateConfig } from './shared/config.js';
 import { AbortedError, MisconfiguredError, serializeError, toAppError } from './shared/errors.js';
 import { log } from './shared/logger.js';
 import { countRoots } from './domain/tree.js';
@@ -16,16 +16,20 @@ import { MappingTable, chromeBookmarks, readLocalTree } from './platform/bookmar
 import { withKeepalive } from './platform/keepalive.js';
 import { createWebdavStore } from './remote/webdav.js';
 import { createS3Store } from './remote/s3.js';
-import { probeStore, type RemoteStore } from './remote/store.js';
+import { isCapsUsable, probeStore, type RemoteStore } from './remote/store.js';
 import { decodeJson, decodeSnapshot, encodeJson, parseHistoryIndex } from './remote/codec.js';
 import { EMPTY_INDEX, estimateIndexBytes, rebuildIndexFromNames } from './remote/history.js';
 import { REMOTE_FILES } from './shared/config.js';
 import { acquireLock, clearStaleLock } from './engine/lock.js';
+import { assertBaselineBelongsTo } from './engine/identity.js';
 import { previewOverwrite, runSync, type SyncRequest } from './engine/sync.js';
 import { applySchedule, chromeAlarms, SYNC_ALARM } from './scheduler/alarms.js';
 import {
+  adoptBaselineRemote,
+  clearCaps,
   clearSyncState,
   getBaseline,
+  getBaselineRemote,
   getCaps,
   getConfig,
   getLastResult,
@@ -89,7 +93,7 @@ async function requireConfigured(): Promise<Config> {
 /** 没探测过就先探测一次，结果缓存（方案 3.1 的 caps 键）。 */
 async function ensureCaps(config: Config, store: RemoteStore): Promise<RemoteCaps> {
   const cached = await getCaps();
-  if (cached !== undefined && cached.suffix === (config.compress ? '.json.gz' : '.json')) return cached;
+  if (isCapsUsable(cached, config.compress)) return cached;
 
   const caps = await probeStore(store, { now: () => new Date(), compress: config.compress });
   await setCaps(caps);
@@ -161,6 +165,19 @@ async function executeSync(req: SyncRequest): Promise<Response> {
   log.setContext({ runId, phase: 'read' });
 
   try {
+    // ★ 基线必须属于当前远端，否则三方合并会凭空产生删除（审计 BUG-01）。
+    // 只拦双向同步：上传与下载的目标树不取自基线，它们既安全、又是用户把基线
+    // 重新绑定到新远端的出路。放在任何网络请求之前，失败得快一点。
+    const identity = remoteIdentity(config);
+    if (req.kind === 'sync') {
+      await assertBaselineBelongsTo(identity, {
+        hasBaseline: async () => (await getBaseline()) !== undefined,
+        getStored: getBaselineRemote,
+        adopt: adoptBaselineRemote,
+        log: { warn: (m, ...a) => log.warn(m, ...a) },
+      });
+    }
+
     const store = buildStore(config, abort.signal);
     const caps = await ensureCaps(config, store);
     const mapping = await loadMapping();
@@ -178,8 +195,9 @@ async function executeSync(req: SyncRequest): Promise<Response> {
         newGuid: makeGuidFactory(randomSource()),
         loadBaseline: async () => await getBaseline(),
         // ★ INV-1：这是全项目唯一把基线交给 storage 的地方，
-        // 由 engine/commit.ts 在远端提交成功后调用。
-        saveBaseline: setBaseline,
+        // 由 engine/commit.ts 在远端提交成功后调用。基线与远端指纹一起落盘，
+        // 上传/下载因此能把绑定改到新远端。
+        saveBaseline: (snap) => setBaseline(snap, identity),
         signal: abort.signal,
         log: { info: (m, ...a) => log.info(m, ...a), warn: (m, ...a) => log.warn(m, ...a) },
         onPhase: (phase, done, total) => {
@@ -388,14 +406,15 @@ async function applyConfigPatch(patch: Partial<Config>): Promise<Config> {
   await setConfig(next);
 
   // 远端地址或压缩开关变了，之前探测的能力可能不再适用。
+  //
+  // 用指纹比较而不是逐字段列举：先前只比了 remoteKind / webdav.url /
+  // s3.endpoint / s3.bucket / compress 五项，basePath、prefix、region、
+  // 寻址方式改了都不作废，而这几项同样会换掉真正被访问的位置。
   const remoteChanged =
-    next.remoteKind !== current.remoteKind ||
-    next.webdav.url !== current.webdav.url ||
-    next.s3.endpoint !== current.s3.endpoint ||
-    next.s3.bucket !== current.s3.bucket ||
-    next.compress !== current.compress;
+    remoteIdentity(next) !== remoteIdentity(current) || next.compress !== current.compress;
   if (remoteChanged) {
-    await setCaps({ ifMatch: false, suffix: next.compress ? '.json.gz' : '.json', probedAt: '' });
+    // ★ 必须删除而不是写一条 ifMatch:false 的占位记录，理由见 clearCaps。
+    await clearCaps();
     log.info('远端配置已变更，能力探测结果作废');
   }
 

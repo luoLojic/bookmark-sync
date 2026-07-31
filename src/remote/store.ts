@@ -59,6 +59,25 @@ export function assertOk(res: HttpResponse, context: { method: string; path: str
 /** 故意用一个不可能匹配的 ETag，用来试探服务器是否真的执行条件写。 */
 const IMPOSSIBLE_ETAG = '"bookmark-sync-probe-nonexistent-etag"';
 
+/**
+ * 缓存的能力记录还能不能用（审计 H-1）。
+ *
+ * 两个条件：后缀要与当前压缩开关一致，且 probedAt 必须非空。
+ *
+ * 后者不是多余的防御。早先的版本作废缓存的做法是写一条
+ * `{ ifMatch: false, suffix, probedAt: '' }` 的占位记录，而判定只看 suffix ——
+ * 于是那条「作废」记录被当成有效缓存，条件写永久停在 FR-18 的降级模式（失去
+ * 唯一的原子提交保护），且 ensureContainer 唯一的调用点在 probeStore 里，
+ * 探测不再发生就意味着换到新的 WebDAV 目录后 MKCOL 不执行，PUT 一直 409。
+ * 作废现在走 clearCaps() 直接删键；这里继续认得哨兵，好让已经写进 storage
+ * 的那条记录自愈。
+ */
+export function isCapsUsable(cached: RemoteCaps | undefined, compress: boolean): cached is RemoteCaps {
+  if (cached === undefined) return false;
+  if (cached.probedAt === '') return false;
+  return cached.suffix === (compress ? '.json.gz' : '.json');
+}
+
 export interface ProbeDeps {
   /** 探测文件的路径，默认 `.probe`。 */
   path?: string;
