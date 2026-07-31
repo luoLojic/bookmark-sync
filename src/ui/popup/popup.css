@@ -102,7 +102,15 @@ body {
   }
 }
 
-.err {
+/*
+ * 类名与 options.css 保持一致，都叫 .error。
+ *
+ * 这里原本叫 .err，而 popup.ts 设的是 className = 'error'（设置页那边是对的），
+ * 于是错误文字既不变红也不 word-break，长错误信息会把 320px 的弹窗撑破。
+ * 两个页面用不同的约定就一定会有一边写错，所以统一，并由
+ * test/ui/class-contract.test.ts 静态盯住。
+ */
+.error {
   color: var(--danger);
   word-break: break-word;
 }

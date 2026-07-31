@@ -173,3 +173,28 @@ describe('manifest 与打包产物一致', () => {
     }
   });
 });
+
+/**
+ * 两条只在浏览器里才看得出来的行为，静态盯住（审计 L-2 / H-7）。
+ *
+ * 真正该做的是给 popup 加 DOM 级测试，但那要引入 jsdom（vitest 只把它列为可选
+ * 对等依赖，项目现在没装）。在决定要不要加这个开发期依赖之前，先用静态断言把
+ * 已修的行为钉住，免得下次改 popup 时又悄悄退回去。
+ */
+describe('popup 的状态行行为', () => {
+  const script = read('src/ui/popup/popup.ts');
+
+  it('同步完成后的刷新必须保留改动摘要（L-2）', () => {
+    // 原先 done 事件先写好摘要，紧接着 run() 末尾的 refresh() 又把状态行改成
+    // 「就绪」，用户只看到摘要闪一下。
+    expect(script).toMatch(/renderResult\(res\.result\);\s*\n\s*await refresh\(\{ keepStateLine: true \}\)/);
+    expect(script).toMatch(/function render\(s: StatusPayload, opts: \{ keepStateLine\?: boolean \}/);
+  });
+
+  it('状态行显示的是文字，不是 i18n key（H-7）', () => {
+    // lastResult.error 由后台翻译后写入；popup 直接显示它。这条断言防的是有人
+    // 在 popup 侧「顺手」把它当 key 再过一遍 t()，那会在翻译失败时显示空串。
+    expect(script).toMatch(/s\.last\.error \?\? t\('stateError'\)/);
+    expect(script).not.toMatch(/t\(s\.last\.error/);
+  });
+});

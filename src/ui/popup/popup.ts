@@ -40,6 +40,14 @@ const el = {
 
 let busy = false;
 
+/**
+ * 计数显示的是「书签 + 文件夹」的条目总数。
+ *
+ * 确认弹窗的文案与它一致（都说「个条目」），删除保护的文案本来就是「个条目」。
+ * 需求 9.1 的示意图里这个数字指的是书签数，两者只能选一个 —— 选条目总数是因为
+ * 覆盖类操作真正会影响的就是条目，只报书签数会让「将丢失 N 个」与用户自己数出来
+ * 的对不上。
+ */
 function fmtCounts(c: Counts | null): string {
   return c ? String(c.bookmarks + c.folders) : '—';
 }
@@ -67,7 +75,15 @@ function setBusy(on: boolean): void {
   el.progressWrap.hidden = !on;
 }
 
-function render(s: StatusPayload): void {
+/**
+ * 渲染状态。
+ *
+ * keepStateLine 用于「同步刚完成」这一刻：调用方已经把本次的改动摘要写进状态行，
+ * 这里不能再覆盖成「就绪」。原先无条件覆盖，于是用户只看到摘要闪一下就没了 ——
+ * done 事件先到、renderResult 写好摘要，紧接着 run() 末尾的 refresh() 又把它擦掉
+ * （审计 L-2）。
+ */
+function render(s: StatusPayload, opts: { keepStateLine?: boolean } = {}): void {
   if (!s.configured) {
     el.stateLine.textContent = t('stateNotConfigured');
     el.stateLine.className = 'warn';
@@ -92,6 +108,8 @@ function render(s: StatusPayload): void {
     el.stateLine.textContent = phaseLabel(s.state.phase);
     el.stateLine.className = '';
     setProgress(s.state.done, s.state.total);
+  } else if (opts.keepStateLine === true) {
+    // 摘要已由调用方写好，保留它。
   } else if (s.last && !s.last.ok) {
     el.stateLine.textContent = s.last.error ?? t('stateError');
     el.stateLine.className = 'error';
@@ -118,9 +136,9 @@ function setProgress(done: number, total: number): void {
   el.progressBar.style.width = `${pct}%`;
 }
 
-async function refresh(): Promise<void> {
+async function refresh(opts: { keepStateLine?: boolean } = {}): Promise<void> {
   const res = await sendRequest({ t: 'getStatus' });
-  if (res.ok && res.t === 'status') render(res.payload);
+  if (res.ok && res.t === 'status') render(res.payload, opts);
 }
 
 // ── 确认覆盖层（需求 9.2） ─────────────────────────────────────────────
@@ -254,7 +272,14 @@ async function run(req: Request): Promise<void> {
     el.stateLine.textContent = res.error.messageKey
       ? t(res.error.messageKey, ...(res.error.messageArgs ?? []))
       : res.error.message;
-    await refresh();
+    await refresh({ keepStateLine: true });
+    return;
+  }
+
+  if (res.t === 'done') {
+    // 摘要取自应答本身，不依赖 done 广播的到达顺序；随后的刷新不许覆盖它。
+    renderResult(res.result);
+    await refresh({ keepStateLine: true });
     return;
   }
   await refresh();
